@@ -1,5 +1,6 @@
 import music21 as music
 import numpy as np
+import random as random
 from torchtext.data.dataset import Dataset
 from torchtext.data.example import Example
 from torchtext.data.iterator import BucketIterator
@@ -208,6 +209,53 @@ def convert_array_to_midi(array, path):  # takes in 2d array. converts into file
     s1 = music.stream.Stream()
     for i in range(0, array.shape[0]):  # goes through array
         s1.append(create_note(array[i]))  # appends notes to stream
+
+    convert_notes_to_midi(s1, path)
+
+# v2 method: takes in 2d array, converts into file.  WORK IN PROGRESS
+def convert_array_to_midi2(array, path, tempo=120):
+    # new features: tempo alterable, able to change note duration.
+    s1 = music.stream.Stream()
+    mm = music.tempo.MetronomeMark(number=tempo)  # can set metronome (i assume bpm? with beat=quarter note)
+    s1.append(mm)
+
+    pitches = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    octave_shift = -1
+
+    extend_chance = 0.6  # currently we use random seed to determine if notes should be extended or not
+    seed = 1
+    random.seed(seed)
+
+    song_length = array.shape[0]  # length of output array
+    for i in range(0, song_length):  # goes through array
+        if s[23] == 1:  # in same method now bc we need to access multiple rows of the array
+            n = music.note.Rest()
+        else:
+            index_pitch = int(np.argmax(array[i, 0:12]))  # find which pitch from one-hot
+            index_octave = int(np.argmax(array[i, 12:23]))  # find which octave from one-hot
+
+            n = music.note.Note()
+            n.pitch.name = pitches[index_pitch]
+            n.pitch.octave = index_octave + octave_shift
+            j = i+1
+            duration = 1
+            while j < song_length:
+                # Find next note's pitch and octave
+                next_pitch = int(np.argmax(array[j, 0:12]))
+                next_octave = int(np.argmax(array[j, 12:23]))
+
+                # If next note matches current note, we have a chance to extend the note
+                if next_octave == index_octave and next_pitch == index_pitch:
+                    if random.random() < extend_chance:
+                        duration += 1  # increase duration of note
+                        j += 1
+                        i += 1  # can we increase enumerator?
+                    else:
+                        j = song_length
+                else:
+                    j = song_length
+            n.duration.quarterLength = duration  # set duration of note (in quarter notes)
+        s1.append(n)
 
     convert_notes_to_midi(s1, path)
 
