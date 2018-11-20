@@ -4,7 +4,6 @@ from torchtext.data.dataset import Dataset
 from torchtext.data.example import Example
 from torchtext.data.iterator import BucketIterator
 from dataset import MusicDataset
-from torch.utils.data import DataLoader
 
 VERBOSE = True
 
@@ -88,7 +87,7 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
     pitches_tensor = np.zeros((music_length, len(MIDI_PITCHES)))
     octaves_tensor = np.zeros((music_length, len(MIDI_OCTAVES)))
     if has_rest_col:
-        rests_tensor = np.zeros((music_length, 1))
+        rests_tensor = np.ones((music_length, 1))
 
     prev_index = -1
     prev_note = -1
@@ -96,19 +95,20 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
         curr_index = round(note.offset / atu)  # (inclusive)
         end_index = curr_index + round(note.duration.quarterLength / atu)  # (exclusive)
 
-        # If >=2 notes/rests at same time, only take highest one and ignore rests and lower notes
-        if curr_index == prev_index and (isinstance(note, music.note.Rest) or note.pitch.midi <= prev_note):
+        if isinstance(note, music.note.Rest):
             continue
 
-        if has_rest_col and isinstance(note, music.note.Rest):
-            rests_tensor[curr_index:end_index] = 1
-            prev_note = -1 # causes Rest's to always have lower pitch than Notes so they will always be overwritten
-        else:
-            pitches_tensor[curr_index:end_index] = (np.array(MIDI_PITCHES) == note.pitch.pitchClass)
-            octaves_tensor[curr_index:end_index] = (np.array(MIDI_OCTAVES) == note.pitch.octave)
-            # TODO med priority: try one-hot encoding all 127 notes instead
-            prev_note = note.pitch.midi
+        # If >=2 notes/rests at same time, only take highest one and ignore rests and lower notes
+        if curr_index == prev_index and note.pitch.midi <= prev_note:
+            continue
 
+        if has_rest_col:
+            rests_tensor[curr_index:end_index] = 0
+
+        pitches_tensor[curr_index:end_index] = (np.array(MIDI_PITCHES) == note.pitch.pitchClass)
+        octaves_tensor[curr_index:end_index] = (np.array(MIDI_OCTAVES) == note.pitch.octave)
+        # TODO med priority: try one-hot encoding all 127 notes instead
+        prev_note = note.pitch.midi
         prev_index = curr_index
 
     if has_rest_col:
@@ -167,55 +167,22 @@ def files_to_bucketiterator(pathlist, batch_size, first_voice_only=True, has_res
     return bi
 
 
-# DOESN'T WORK
-# goes from midi filepaths to MusicDataset (defined in dataset.py) then to torch.utils.data.DataLoader
-def files_to_dataloader(pathlist, batch_size, first_voice_only=True, has_rest_col=True, shuffle=True):
-    tensorlist = []
-    lengths = []
-    for path in pathlist:
-        if VERBOSE:
-            print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
-        tensorlist.append(t)
-        lengths.append(len(t))
-    dataset = MusicDataset(tensorlist, lengths)
-    data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
-    return data_loader
+# # DOESN'T WORK
+# # goes from midi filepaths to MusicDataset (defined in dataset.py) then to torch.utils.data.DataLoader
+# def files_to_dataloader(pathlist, batch_size, first_voice_only=True, has_rest_col=True, shuffle=True):
+#     tensorlist = []
+#     lengths = []
+#     for path in pathlist:
+#         if VERBOSE:
+#             print("Processing {} ...".format(path))
+#         t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
+#         tensorlist.append(t)
+#         lengths.append(len(t))
+#     dataset = MusicDataset(tensorlist, lengths)
+#     data_loader = DataLoader(dataset, batch_size=batch_size, shuffle=shuffle)
+#     return data_loader
 
 
-#current workaround: concatenate all of them lol
-def files_to_cat_tensor_dataloader(pathlist, first_voice_only=True, has_rest_col=True, shuffle=True):
-    cat_tensor = np.zeros((0,24)) #/ un-hard-code the 24
-    for path in pathlist:
-        if VERBOSE:
-            print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
-        cat_tensor = np.concatenate((cat_tensor, t), axis=0)
-    dataset = MusicDataset([cat_tensor])
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
-    return data_loader
-
-def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_col=True, shuffle=True):
-
-    c_row = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
-    d_row = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
-    e_row = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
-    f_row = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
-    g_row = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
-    cat_tensor = np.concatenate((c_row, d_row, e_row, f_row, g_row, g_row, f_row, e_row, d_row, c_row)*50)
-    dataset = MusicDataset([cat_tensor])
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
-    return data_loader
 
 
 
