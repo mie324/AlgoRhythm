@@ -22,22 +22,21 @@ class RNN(nn.Module):
 
 
 class FFNN(nn.Module):
-    def __init__(self, dim_in, dim_hidden, dim_out, memory=3, num_layers=5):
+    #/ TODO to try: do a convolutional thing over pitches (wraparound) and over octaves (no wraparound)
+    def __init__(self, dim_music, dim_hidden, memory=3, num_hidden_layers=5):
         super(FFNN, self).__init__()
-        self.fc1 = nn.Linear(dim_in * memory, dim_hidden)
-        self.fc2 = nn.Linear(dim_hidden, dim_hidden)
-        self.fc3 = nn.Linear(dim_hidden, dim_hidden)
-        self.out = nn.Linear(dim_hidden, dim_out)
+        self.hidden_layers = nn.ModuleList()
+        self.layer_in = nn.Linear(dim_music * memory, dim_hidden)
+        for i in range(num_hidden_layers):
+            self.hidden_layers.append(nn.Linear(dim_hidden, dim_hidden))
+        self.layer_out = nn.Linear(dim_hidden, dim_music)
 
     def forward(self, x):
-        x = torch.cat((x[:,0:-3,:], x[:,1:-2,:], x[:,2:-1,:]), dim=2)
         x = x.float()
-        x = F.leaky_relu(self.fc1(x))
-        x = F.leaky_relu(self.fc2(x))
-        x = F.leaky_relu(self.fc3(x))
-
-        x = self.out(x)
-        x = F.sigmoid(x)
+        x = F.leaky_relu(self.layer_in(x))
+        for layer in self.hidden_layers:
+            x = F.leaky_relu(layer(x))
+        x = F.sigmoid(self.layer_out(x))
         return x
 
 
