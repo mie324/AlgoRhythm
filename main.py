@@ -10,6 +10,7 @@ import argparse
 import os
 import random
 from midi_converter import file_to_tensor
+import pickle
 
 from dataset import MusicDataset
 
@@ -24,15 +25,29 @@ torch.manual_seed(seed)
 random.seed(seed)
 
 
-TRN_PATHS = []
-TRN_PATHS.extend(["./midi/bach_wtc1/Prelude{}.mid".format(i) for i in [1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,22,23,24]])
-TRN_PATHS.extend(["./midi/bach_wtc1/Fugue{}.mid".format(i) for i in [1,2,3,4,5,7,8,9,10,11,13,14,15,16,17,18,20,21,22,23,24]])
+PATHS = []
+PATHS.extend(["./midi/bach_wtc1/Prelude{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 21, 22, 23, 24]])
+PATHS.extend(["./midi/bach_wtc1/Fugue{}.mid".format(i) for i in [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 24]])
 
-VAL_PATHS = []
+
 
 VERBOSE = True
 
 #/todo try: concat columns with difference in pitch
+
+# splits list of path files into trn, val, tst lists, according to the sizes.
+def trn_val_tst_split(pathlist, trn_size, val_size, tst_size):
+    total = float(trn_size + val_size + tst_size)
+    val_size = round(val_size / total * len(pathlist))
+    tst_size = round(tst_size / total * len(pathlist))
+    trn_size = len(pathlist) - val_size - tst_size
+
+    pathlist = np.random.permutation(pathlist)
+    trn_pathlist = pathlist[:trn_size]
+    val_pathlist = pathlist[trn_size : trn_size+val_size]
+    tst_pathlist = pathlist[trn_size+val_size :]
+
+    return trn_pathlist, val_pathlist, tst_pathlist
 
 def add_shifted_copies(tensor, num_copies):
     tensor_2 = tensor
@@ -42,7 +57,7 @@ def add_shifted_copies(tensor, num_copies):
     return tensor_2
 
 #current workaround: concatenate all of them lol
-def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True, shuffle=True):
+def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True):
     cat_tensor = np.zeros((0,24)) #/ un-hard-code the 24
     for path in pathlist:
         if VERBOSE:
@@ -52,7 +67,7 @@ def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True
     cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
 
     dataset = MusicDataset([cat_tensor], [cat_tensor_2])
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
+    data_loader = DataLoader(dataset, batch_size=1)
     return data_loader
 
 def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_col=True, shuffle=True):
@@ -79,15 +94,27 @@ def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_co
 
 def main(args):
 
+    if args.concat:
+        has_saved_dataloaders = os.path.isfile("./output/loaders.pkl")
+        if not has_saved_dataloaders:
+            trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.8, 0.1, 0.1)
 
+            #trn_bucketer = files_to_bucketiterator(TRN_PATHS, args.batch_size)
+            #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=True, has_rest_col=True, shuffle=True)
 
+            trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
+            val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
+            tst_loader = files_to_cat_tensor_dataloader(tst_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
 
-    #trn_bucketer = files_to_bucketiterator(TRN_PATHS, args.batch_size)
-    #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=True, has_rest_col=True, shuffle=True)
+            # trn_loader = super_ez_trn_example_dataloader(TRN_PATHS, first_voice_only=False, has_rest_col=True, shuffle=True)
+            with open("./output/loaders.pkl", 'wb') as f:
+                pickle.dump([trn_loader, val_loader, tst_loader], f, protocol=-1)
+        else:
+            with open("./output/loaders.pkl", 'rb') as f:
+                trn_loader, val_loader, tst_loader = pickle.load(f)
 
-    trn_loader = files_to_cat_tensor_dataloader(TRN_PATHS, num_copies=args.memory, first_voice_only=False, has_rest_col=True, shuffle=True)
-    # trn_loader = super_ez_trn_example_dataloader(TRN_PATHS, first_voice_only=False, has_rest_col=True, shuffle=True)
-
+    else:
+        raise Exception("Not concatenating is not yet supported.")
 
     print("Hyperparameters:\n{}".format(args))
 
@@ -246,6 +273,7 @@ if __name__ == '__main__':
     parser.add_argument('--memory', type=int, default=7)
     parser.add_argument('--num_hidden_layers', type=int, default=3)
     parser.add_argument('--dim_hidden', type=int, default=100)
+    parser.add_argument('--concat', type=bool, default=True) # whether different pieces are concatenated together or not
 
     parser.add_argument('--eval_every', type=int, default=100)
 
