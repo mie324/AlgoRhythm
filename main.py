@@ -159,26 +159,27 @@ def main(args):
             corr = (binarize_pred(np.array(predictions.detach())[0]) == label)[0]
             corr = np.all(np.array(corr), axis=1)
             tot_corr += int(corr.sum())
-            denominator += corr.shape[0]
-            print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), corr.sum()/len(corr)))
-            if False and t % args.eval_every == 0: #/make validation work
-                val_acc, val_loss = evaluate(model, val_bucketer, loss_fnc)
-                trn_acc_arr[t // args.eval_every] = float(mov_avg_corr) / denominator
+            denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
+            # print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), corr.sum()/len(corr)))
+            if t % args.eval_every == 0: #/make validation work
+                val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
+                trn_acc_arr[t // args.eval_every] = float(tot_corr) / denominator
                 val_acc_arr[t // args.eval_every] = val_acc
 
                 print(
-                    "Epoch: {:>3d}, Step: {:>7d} | Train acc: {:.6f} | Loss: {:.6f} | Val acc: {:.6f}"
+                    "Epoch: {:>3d}, Step: {:>7d} | Trn acc: {:.6f} | Trn loss (*1e6): {:.6f} | Val acc: {:.6f} | Val loss (*1e6): {:.6f}"
                         .format(epoch + 1,
                                   t + 1,
                                   trn_acc_arr[t // args.eval_every],
-                                  accum_loss / args.eval_every,
-                                  val_acc))
+                                  accum_loss / denominator * 1e6,
+                                  val_acc,
+                                  val_loss * 1e6))
                 if val_acc > best_val_acc:
                     torch.save(model, "./model_dir/model_{}.pt".format(args.model))
                     best_val_acc = val_acc
 
                 accum_loss = 0
-                mov_avg_corr = 0
+                # mov_avg_corr = 0
                 denominator = 0
             t = t + 1
         if epoch % 100 == 0:
@@ -246,21 +247,37 @@ def load_model(args):
         raise Exception("Only adam optimizer currently supported")
     return model, loss_fn, optimizer
 
-def evaluate(model, bucketer, loss_fnc):
-    total_corr = 0
-    total_loss = 0
-    for i, batch in enumerate(bucketer):
-        feats, lengths, label = batch.Text[0], batch.Text[1], batch.Label
-        predictions = model(feats, lengths)
-        corr = ((predictions > 0.5).reshape(-1) == label.byte())
-        total_corr += int(corr.sum())
+def evaluate(model, loader, args, loss_fnc):
+    tot_corr = 0
+    tot_loss = 0
+    for i, batch in enumerate(loader):
+        tensor = batch['data_with_shifted']
+        actual = batch['data']
+        predictions = model(tensor)
 
-        loss = loss_fnc(input=predictions.squeeze(), target=label.float())
-        total_loss += loss
+        if args.model == "rnn":
+            predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
+        elif args.model == "ffnn":
+            predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
 
-    acc = float(total_corr) / len(bucketer.dataset)
-    avg_loss = total_loss / len(bucketer.dataset)
-    return acc, avg_loss
+        if args.model == "ffnn":
+            label = actual[:, args.memory:,
+                    :]  # remove first `memory` predictions, because the fnn doesn't predict the first `memory` notes
+        elif args.model == "rnn":
+            label = tensor[:, 1:, :]  # remove first prediction, because the rnn doesn't predict the first note
+
+        corr = (binarize_pred(np.array(predictions.detach())[0]) == label)[0]
+        corr = np.all(np.array(corr), axis=1)
+        tot_corr += int(corr.sum())
+
+        loss = loss_fnc(input=predictions, target=label.float())
+        tot_loss += loss
+    if args.concat:
+        acc_per_note = float(tot_corr) / label.shape[1]
+        loss_per_note = tot_loss / label.shape[1]
+    else:
+        raise Exception("Not concatenating is not yet supported.")
+    return acc_per_note, loss_per_note
 
 
 if __name__ == '__main__':
@@ -278,7 +295,7 @@ if __name__ == '__main__':
     parser.add_argument('--dim_hidden', type=int, default=100)
     parser.add_argument('--concat', type=bool, default=True) # whether different pieces are concatenated together or not
 
-    parser.add_argument('--eval_every', type=int, default=100)
+    parser.add_argument('--eval_every', type=int, default=10)
 
     args = parser.parse_args()
 
