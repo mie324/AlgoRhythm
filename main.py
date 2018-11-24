@@ -57,12 +57,12 @@ def add_shifted_copies(tensor, num_copies):
     return tensor_2
 
 #current workaround: concatenate all of them lol
-def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True):
+def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True, has_length_col=True):
     cat_tensor = np.zeros((0,25)) #/ un-hard-code the 24
     for path in pathlist:
         if VERBOSE:
             print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
+        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col, has_length_col=has_length_col)
         cat_tensor = np.concatenate((cat_tensor, t), axis=0)
     cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
 
@@ -105,9 +105,9 @@ def main(args):
             #trn_bucketer = files_to_bucketiterator(TRN_PATHS, args.batch_size)
             #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=True, has_rest_col=True, shuffle=True)
 
-            trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
-            val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
-            tst_loader = files_to_cat_tensor_dataloader(tst_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
+            trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
+            val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
+            tst_loader = files_to_cat_tensor_dataloader(tst_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
 
             # trn_loader = super_ez_trn_example_dataloader(TRN_PATHS, first_voice_only=False, has_rest_col=True, shuffle=True)
             with open("./output/loaders.pkl", 'wb') as f:

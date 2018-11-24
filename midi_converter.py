@@ -168,7 +168,7 @@ def most_common_note_length(sorted_notelist):
 
 
 # goes from midi filepath to tensor, combining all the previous helper functions.
-def file_to_tensor(path, first_voice_only=True, has_rest_col=True):
+def file_to_tensor(path, first_voice_only=True, has_rest_col=True, has_length_col=True):
     x = get_stream(path)
     if not first_voice_only:
         x = x.flat
@@ -176,7 +176,10 @@ def file_to_tensor(path, first_voice_only=True, has_rest_col=True):
     x = firstvoice_to_notechordlist(x)
     x = notechordlist_to_notelist(x)
     x = sorted_notelist(x)
-    x = notelist_to_tensor2(x, has_rest_col=has_rest_col)
+    if has_length_col:
+        x = notelist_to_tensor2(x, has_rest_col=has_rest_col)
+    else:
+        x = notelist_to_tensor(x, has_rest_col=has_rest_col)
     return x
 
 # # DOESN'T WORK
