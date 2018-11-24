@@ -284,7 +284,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--epochs', type=int, default=1000)
+    parser.add_argument('--epochs', type=int, default=4000)
     parser.add_argument('--model', type=str, default="ffnn")
     parser.add_argument('--emb_dim', type=int, default=100)
     parser.add_argument('--rnn_hidden_dim', type=int, default=100)

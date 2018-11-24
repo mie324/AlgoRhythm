@@ -236,8 +236,15 @@ def convert_array_to_midi(array, path):  # takes in 2d array. converts into file
 
     convert_notes_to_midi(s1, path)
 
+def convert_array_to_midi2(array, path):
+    s1 = music.stream.Stream()
+    for i in range(0, array.shape[0]):  # goes through array
+        s1.append(create_note(array[i], array[i, 24]))  # appends notes to stream, adds in length
+
+    convert_notes_to_midi(s1, path)
+
 # v2 method: takes in 2d array, converts into file.  WORK IN PROGRESS
-def convert_array_to_midi2(array, path, tempo=120):
+def convert_array_to_midi_alter(array, path, tempo=120):
     # new features: tempo alterable, able to change note duration.
     s1 = music.stream.Stream()
     mm = music.tempo.MetronomeMark(number=tempo)  # can set metronome (i assume bpm? with beat=quarter note)
@@ -284,17 +291,20 @@ def convert_array_to_midi2(array, path, tempo=120):
     convert_notes_to_midi(s1, path)
 
 
-def create_note(s):  # converts a numpy list of one-hot to a note or rest
+def create_note(s, duration=1):  # converts a numpy list of one-hot to a note or rest
     pitches = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
     octave_shift = -1
     if s[23] == 1:
-        return music.note.Rest()
+        n = music.note.Rest()
+        n.duration.quarterLength = duration
+        return n
     else:
         index_pitch = int(np.argmax(s[0:12]))  # find which pitch from one-hot
         index_octave = int(np.argmax(s[12:23]))  # find which octave from one-hot
         n = music.note.Note()
         n.pitch.name = pitches[index_pitch]
         n.pitch.octave = index_octave+octave_shift
+        n.duration.quarterLength = duration
         return n
 
 

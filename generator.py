@@ -7,6 +7,7 @@ import random
 
 from models import *
 from main import add_shifted_copies
+from midi_converter import convert_array_to_midi2
 
 if __name__ == "__main__":
 
@@ -14,8 +15,9 @@ if __name__ == "__main__":
 
     #model = torch.load("./model_dir/epoch3000_algorhythm_Namespace(batch_size=4, dim_hidden=100, emb_dim=100, epochs=4000, eval_every=100, loss_fn='mse', lr=0.001, memory=7, model='ffnn', num_hidden_layers=3, optimizer='adam', rnn_hidden_dim=100).pt")
     model = torch.load("./model_dir/model.pt")
+    variable = True
 
-    while True:
+    while variable:
         # initial = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,  # pitch
         #                     0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,  # octave
         #                     0]).reshape((1, 1, 24))  # rest
@@ -107,4 +109,8 @@ if __name__ == "__main__":
         a_single
         b_single
 
-        print()
+        convert_array_to_midi2(a_single, "./generated_midi/generated_a.mid")
+        convert_array_to_midi2(b_single, "./generated_midi/generated_b.mid")
+
+        print("Complete")
+        variable = False
