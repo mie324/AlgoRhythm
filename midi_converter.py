@@ -91,6 +91,7 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
 
     pitches_tensor = np.zeros((music_length, len(MIDI_PITCHES)))
     octaves_tensor = np.zeros((music_length, len(MIDI_OCTAVES)))
+    lengths_tensor = np.zeros((music_length, 1))
     if has_rest_col:
         rests_tensor = np.ones((music_length, 1))
 
@@ -115,12 +116,35 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
         # TODO med priority: try one-hot encoding all 127 notes instead
         prev_note = note.pitch.midi
         prev_index = curr_index
+        lengths_tensor[curr_index:end_index] = note.duration.quarterLength
 
     if has_rest_col:
-        tensor = np.concatenate((pitches_tensor, octaves_tensor, rests_tensor), axis=1)
+        tensor = np.concatenate((pitches_tensor, octaves_tensor, rests_tensor, lengths_tensor), axis=1)
     else:
         tensor = np.concatenate((pitches_tensor, octaves_tensor), axis=1)
     return tensor
+
+
+# convert sorted notelist into tensor, now including length of notes
+def notelist_to_tensor2(sorted_notelist, has_rest_col=True):
+    music_length = len(sorted_notelist)
+    pitches_tensor = np.zeros((music_length, len(MIDI_PITCHES)))
+    octaves_tensor = np.zeros((music_length, len(MIDI_OCTAVES)))
+    lengths_tensor = np.zeros((music_length, 1))
+    rests_tensor = np.ones((music_length, 1))
+
+    for num, note in enumerate(sorted_notelist):
+        if isinstance(note, music.note.Rest):  # skip if it's a rest
+            continue
+
+        rests_tensor[num] = 0  # else make it a rest
+        pitches_tensor[num] = (np.array(MIDI_PITCHES) == note.pitch.pitchClass)
+        octaves_tensor[num] = (np.array(MIDI_OCTAVES) == note.pitch.octave)
+        lengths_tensor[num] = note.duration.quarterLength
+
+    tensor = np.concatenate((pitches_tensor, octaves_tensor, rests_tensor, lengths_tensor), axis=1)
+    return tensor
+
 
 
 # finds the most common note length of a sorted notelist, to be used as an atomic time unit.
@@ -152,7 +176,7 @@ def file_to_tensor(path, first_voice_only=True, has_rest_col=True):
     x = firstvoice_to_notechordlist(x)
     x = notechordlist_to_notelist(x)
     x = sorted_notelist(x)
-    x = notelist_to_tensor(x, has_rest_col=has_rest_col)
+    x = notelist_to_tensor2(x, has_rest_col=has_rest_col)
     return x
 
 # # DOESN'T WORK
