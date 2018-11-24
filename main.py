@@ -93,6 +93,9 @@ def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_co
     return data_loader
 
 def main(args):
+    seed = 0
+    np.random.seed(seed)
+    torch.manual_seed(seed)
 
     if args.concat:
         has_saved_dataloaders = os.path.isfile("./output/loaders.pkl")

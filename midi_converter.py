@@ -15,7 +15,11 @@ MIDI_OCTAVES = [-1, 0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
 
 # returns score based on name
 def get_stream(path):
-    score = music.converter.parseFile(path)
+    score = None
+    try:
+        score = music.converter.parseFile(path)
+    except music.midi.MidiException:
+        raise Exception("Midi file could not be parsed: {}".format(path))
     return score
 
 
@@ -150,23 +154,23 @@ def file_to_tensor(path, first_voice_only=True, has_rest_col=True):
     x = notelist_to_tensor(x, has_rest_col=has_rest_col)
     return x
 
-# DOESN'T WORK
-# goes from midi filepaths to torchtext.data.BucketIterator
-def files_to_bucketiterator(pathlist, batch_size, first_voice_only=True, has_rest_col=True):
-    tensorlist = []
-    for path in pathlist:
-        if VERBOSE:
-            print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
-        tensorlist.append(t)
-    dataset = Dataset(tensorlist, {"music" : "Music"})
-
-    bi = BucketIterator(dataset, batch_size, sort_key=lambda x: x.shape[0], sort_within_batch=True, repeat=False)
-    if VERBOSE:
-        print("Processing complete.")
-    return bi
-
-
+# # DOESN'T WORK
+# # goes from midi filepaths to torchtext.data.BucketIterator
+# def files_to_bucketiterator(pathlist, batch_size, first_voice_only=True, has_rest_col=True):
+#     tensorlist = []
+#     for path in pathlist:
+#         if VERBOSE:
+#             print("Processing {} ...".format(path))
+#         t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
+#         tensorlist.append(t)
+#     dataset = Dataset(tensorlist, {"music" : "Music"})
+#
+#     bi = BucketIterator(dataset, batch_size, sort_key=lambda x: x.shape[0], sort_within_batch=True, repeat=False)
+#     if VERBOSE:
+#         print("Processing complete.")
+#     return bi
+#
+#
 # # DOESN'T WORK
 # # goes from midi filepaths to MusicDataset (defined in dataset.py) then to torch.utils.data.DataLoader
 # def files_to_dataloader(pathlist, batch_size, first_voice_only=True, has_rest_col=True, shuffle=True):
@@ -184,16 +188,14 @@ def files_to_bucketiterator(pathlist, batch_size, first_voice_only=True, has_res
 
 
 
-
-
-# converts from a batch (coming from the DataLoader) (which will be a list of 2D tensors of varying sizes)
-# to a 3D tensor where the original 2D tensors are padded with zeros until the maximum length.
-def batch_to_tensor(data, lengths):
-    num_feats = data[0].shape[1]
-    tensor = np.zeros((len(data), max(lengths), num_feats))
-    for i in range(len(data)):
-        tensor[i, 0:lengths[i],:] = data[i]
-    return tensor, lengths
+# # converts from a batch (coming from the DataLoader) (which will be a list of 2D tensors of varying sizes)
+# # to a 3D tensor where the original 2D tensors are padded with zeros until the maximum length.
+# def batch_to_tensor(data, lengths):
+#     num_feats = data[0].shape[1]
+#     tensor = np.zeros((len(data), max(lengths), num_feats))
+#     for i in range(len(data)):
+#         tensor[i, 0:lengths[i],:] = data[i]
+#     return tensor, lengths
 
 
 
