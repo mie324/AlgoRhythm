@@ -168,7 +168,7 @@ def most_common_note_length(sorted_notelist):
 
 
 # goes from midi filepath to tensor, combining all the previous helper functions.
-def file_to_tensor(path, first_voice_only=True, has_rest_col=True, has_length_col=True):
+def file_to_tensor(path, first_voice_only=False, has_rest_col=True, has_length_col=True):
     x = get_stream(path)
     if not first_voice_only:
         x = x.flat
@@ -184,7 +184,7 @@ def file_to_tensor(path, first_voice_only=True, has_rest_col=True, has_length_co
 
 # # DOESN'T WORK
 # # goes from midi filepaths to torchtext.data.BucketIterator
-# def files_to_bucketiterator(pathlist, batch_size, first_voice_only=True, has_rest_col=True):
+# def files_to_bucketiterator(pathlist, batch_size, first_voice_only=False, has_rest_col=True):
 #     tensorlist = []
 #     for path in pathlist:
 #         if VERBOSE:
@@ -201,7 +201,7 @@ def file_to_tensor(path, first_voice_only=True, has_rest_col=True, has_length_co
 #
 # # DOESN'T WORK
 # # goes from midi filepaths to MusicDataset (defined in dataset.py) then to torch.utils.data.DataLoader
-# def files_to_dataloader(pathlist, batch_size, first_voice_only=True, has_rest_col=True, shuffle=True):
+# def files_to_dataloader(pathlist, batch_size, first_voice_only=False, has_rest_col=True, shuffle=True):
 #     tensorlist = []
 #     lengths = []
 #     for path in pathlist:

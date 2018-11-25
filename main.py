@@ -57,7 +57,7 @@ def add_shifted_copies(tensor, num_copies):
     return tensor_2
 
 #current workaround: concatenate all of them lol
-def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True, has_length_col=True):
+def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=False, has_rest_col=True, has_length_col=True):
     cat_tensor = np.zeros((0,25)) #/ un-hard-code the 24
     for path in pathlist:
         if VERBOSE:
@@ -70,7 +70,7 @@ def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True
     data_loader = DataLoader(dataset, batch_size=1)
     return data_loader
 
-def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_col=True, shuffle=True):
+def super_ez_trn_example_dataloader(pathlist, first_voice_only=False, has_rest_col=True, shuffle=True):
 
     c_row = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
@@ -103,7 +103,7 @@ def main(args):
             trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.8, 0.1, 0.1)
 
             #trn_bucketer = files_to_bucketiterator(TRN_PATHS, args.batch_size)
-            #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=True, has_rest_col=True, shuffle=True)
+            #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=False, has_rest_col=True, shuffle=True)
 
             trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
             val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
