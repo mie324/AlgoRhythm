@@ -80,7 +80,7 @@ if __name__ == "__main__":
         # b_with_shift = cat_tensorb_with_shift[np.newaxis, :,:]#np.concatenate((g_row, c_row) * 50, axis=1)
 
         print("", end="")
-        for i in range(1000):
+        for i in range(500):
             a = add_shifted_copies(a_single, 7)[np.newaxis, :, :]
             b = add_shifted_copies(b_single, 7)[np.newaxis, :, :]
 
@@ -109,8 +109,8 @@ if __name__ == "__main__":
         a_single
         b_single
 
-        convert_array_to_midi2(a_single, "./generated_midi/generated_a.mid")
-        convert_array_to_midi2(b_single, "./generated_midi/generated_b.mid")
+        convert_array_to_midi2(a_single[100:], "./generated_midi/generated_a.mid")
+        convert_array_to_midi2(b_single[100:], "./generated_midi/generated_b.mid")
 
         print("Complete")
         variable = False
