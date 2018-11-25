@@ -57,12 +57,12 @@ def add_shifted_copies(tensor, num_copies):
     return tensor_2
 
 #current workaround: concatenate all of them lol
-def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True):
-    cat_tensor = np.zeros((0,24)) #/ un-hard-code the 24
+def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True, has_length_col=True):
+    cat_tensor = np.zeros((0,25)) #/ un-hard-code the 24
     for path in pathlist:
         if VERBOSE:
             print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col)
+        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col, has_length_col=has_length_col)
         cat_tensor = np.concatenate((cat_tensor, t), axis=0)
     cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
 
@@ -74,19 +74,19 @@ def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_co
 
     c_row = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
+                      0,1]).reshape((1, 25))
     d_row = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
+                      0,1]).reshape((1, 25))
     e_row = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
+                      0,1]).reshape((1, 25))
     f_row = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
+                      0,1]).reshape((1, 25))
     g_row = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0]).reshape((1, 24))
+                      0,1]).reshape((1, 25))
     cat_tensor = np.concatenate((c_row, d_row, e_row, f_row, g_row, g_row, f_row, e_row, d_row, c_row)*50)
     dataset = MusicDataset([cat_tensor])
     data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
@@ -105,9 +105,9 @@ def main(args):
             #trn_bucketer = files_to_bucketiterator(TRN_PATHS, args.batch_size)
             #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=True, has_rest_col=True, shuffle=True)
 
-            trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
-            val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
-            tst_loader = files_to_cat_tensor_dataloader(tst_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True)
+            trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
+            val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
+            tst_loader = files_to_cat_tensor_dataloader(tst_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
 
             # trn_loader = super_ez_trn_example_dataloader(TRN_PATHS, first_voice_only=False, has_rest_col=True, shuffle=True)
             with open("./output/loaders.pkl", 'wb') as f:
@@ -175,7 +175,7 @@ def main(args):
                                   val_acc,
                                   val_loss * 1e6))
                 if val_acc > best_val_acc:
-                    torch.save(model, "./model_dir/model_{}.pt".format(args.model))
+                    torch.save(model, "./model_dir/model_best_val_acc.pt")
                     best_val_acc = val_acc
 
                 accum_loss = 0
@@ -183,10 +183,10 @@ def main(args):
                 denominator = 0
             t = t + 1
         if epoch % 100 == 0:
-            torch.save(model, "./model_dir/algorhythm_{}.pt".format(args))
+            torch.save(model, "./model_dir/model.pt")
     #print("Train acc: {}".format(float(tot_corr) / len(trn_loader.dataset)))
     # filename = datetime.datetime.now()
-    torch.save(model, "./model_dir/algorhythm_{}.pt".format(args))
+    torch.save(model, "./model_dir/model.pt")
     # os.open("./model_dir/model_info.csv", mode='a')
 
 
@@ -230,9 +230,9 @@ def binarize_pred(pred): #/hardcoded rn
 
 def load_model(args):
     if args.model == 'rnn':
-        model = RNN(24, args.dim_hidden, 24)
+        model = RNN(25, args.dim_hidden, 25)
     elif args.model == 'ffnn':
-        model = FFNN(24, args.dim_hidden, memory=args.memory, num_hidden_layers=args.num_hidden_layers)
+        model = FFNN(25, args.dim_hidden, memory=args.memory, num_hidden_layers=args.num_hidden_layers)
     else:
         raise Exception("Only rnn and ffnn model type currently supported")
 
