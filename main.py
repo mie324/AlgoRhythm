@@ -56,13 +56,24 @@ def add_shifted_copies(tensor, num_copies):
         tensor_2 = np.concatenate((tensor_2, tensor[(i + 1):]), axis=1)
     return tensor_2
 
-#current workaround: concatenate all of them lol
-def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=False, has_rest_col=True, has_length_col=True):
-    cat_tensor = np.zeros((0,25)) #/ un-hard-code the 24
+# given a list of midi file paths, produces a DataLoader with those midi files
+def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=False, has_rest_col=True,
+                        has_length_col=True, three_d_tensor=True):
+    if not concat:
+        raise Exception("cat_tensor=False not supported")
+
+    if three_d_tensor:
+        pass # TODO implement
+    else:
+        if has_rest_col and has_length_col: tensor_shape = (0,25)
+        elif not has_rest_col and not has_length_col: tensor_shape = (0,23)
+        else: tensor_shape = (0,24)
+    cat_tensor = np.zeros(tensor_shape)
     for path in pathlist:
         if VERBOSE:
             print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col, has_length_col=has_length_col)
+        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col,
+                           has_length_col=has_length_col, three_d_tensor=three_d_tensor)
         cat_tensor = np.concatenate((cat_tensor, t), axis=0)
     cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
 
@@ -92,24 +103,27 @@ def super_ez_trn_example_dataloader(pathlist, first_voice_only=False, has_rest_c
     data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
     return data_loader
 
+def splits(paths_tuple, args):
+    loader_tuple = ()
+    for paths in paths_tuple:
+        loader_tuple += files_to_dataloader(paths, concat=args.concat, num_copies=args.memory,
+                                            first_voice_only=args.first_voice_only, has_rest_col=args.has_rest_col,
+                                            has_length_col=args.has_length_col, three_d_tensor=(args.model == 'cnn'))
+    return loader_tuple
+
+
 def main(args):
-    seed = 0
+    seed = 1
     np.random.seed(seed)
     torch.manual_seed(seed)
+    random.seed(seed)
 
     if args.concat:
         has_saved_dataloaders = os.path.isfile("./output/loaders.pkl")
         if not has_saved_dataloaders:
             trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.8, 0.1, 0.1)
+            trn_loader, val_loader, tst_loader = splits((trn_paths, val_paths, tst_paths), args)
 
-            #trn_bucketer = files_to_bucketiterator(TRN_PATHS, args.batch_size)
-            #trn_loader = files_to_dataloader(TRN_PATHS, args.batch_size, first_voice_only=False, has_rest_col=True, shuffle=True)
-
-            trn_loader = files_to_cat_tensor_dataloader(trn_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
-            val_loader = files_to_cat_tensor_dataloader(val_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
-            tst_loader = files_to_cat_tensor_dataloader(tst_paths, num_copies=args.memory, first_voice_only=False, has_rest_col=True, has_length_col=True)
-
-            # trn_loader = super_ez_trn_example_dataloader(TRN_PATHS, first_voice_only=False, has_rest_col=True, shuffle=True)
             with open("./output/loaders.pkl", 'wb') as f:
                 pickle.dump([trn_loader, val_loader, tst_loader], f, protocol=-1)
         else:
@@ -293,7 +307,10 @@ if __name__ == '__main__':
     parser.add_argument('--memory', type=int, default=7)
     parser.add_argument('--num_hidden_layers', type=int, default=3)
     parser.add_argument('--dim_hidden', type=int, default=100)
-    parser.add_argument('--concat', type=bool, default=True) # whether different pieces are concatenated together or not
+    parser.add_argument('--concat', type=bool, default=True)  # if True, concatenate all pieces together
+    parser.add_argument('--first_voice_only', type=bool, default=False)  # if True, only take first Voice
+    parser.add_argument('--has_rest_col', type=bool, default=True)  # if True, make separate column for Rests # SOON TO BE UNSUPPORTED
+    parser.add_argument('--has_length_col', type=bool, default=True)  # if True, put note length in a column
 
     parser.add_argument('--eval_every', type=int, default=10)
 
