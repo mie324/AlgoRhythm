@@ -109,6 +109,7 @@ if __name__ == "__main__":
         a_single
         b_single
 
+        # Prints the music tensors as midi
         convert_array_to_midi2(a_single[100:], "./generated_midi/generated_a.mid")
         convert_array_to_midi2(b_single[100:], "./generated_midi/generated_b.mid")
 

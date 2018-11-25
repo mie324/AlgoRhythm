@@ -239,15 +239,18 @@ def convert_array_to_midi(array, path):  # takes in 2d array. converts into file
 
     convert_notes_to_midi(s1, path)
 
-def convert_array_to_midi2(array, path, tempo=180):
+def convert_array_to_midi2(array, path, tempo=120):
     s1 = music.stream.Stream()
-    s1.append(music.tempo.MetronomeMark(number=tempo))
-    mean_beat = np.mean(array[:, 24])  # avg duration of beats
+    s1.append(music.tempo.MetronomeMark(number=tempo))  #adds tempo
+
+    # rounds durations to nearest power of 2
+    array[:, 24] = np.exp2(np.round(np.log2(array[:, 24])))
 
     # finds number of beats each note is, rounded to nearest 1/4
-    array[:, 24] = array[:, 24]/mean_beat
-    array[:, 24] = np.round(array[:, 24]*4)
-    array[:, 24] = array[:, 24]/4
+    mean_beat = np.mean(array[:, 24])  # avg duration of beats
+    #array[:, 24] = array[:, 24]/mean_beat
+    #array[:, 24] = np.round(array[:, 24]*2)
+    #array[:, 24] = array[:, 24]/2
 
     for i in range(0, array.shape[0]):  # goes through array
         s1.append(create_note(array[i], array[i, 24]))  # appends notes to stream, adds in length
