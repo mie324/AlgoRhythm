@@ -79,7 +79,7 @@ def sorted_notelist(notelist):
 # One-hot format: pitch = NUM_PITCHES bits, octave = NUM_OCTAVES bits
 # Assumption: exactly 0 or 1 notes are playing at any given time.
 #     If the List contains more than 1 playing simultaneously, the latest-starting one takes precedence.
-def notelist_to_tensor(sorted_notelist, has_rest_col=True):
+def notelist_to_tensor(sorted_notelist):
     atu = most_common_note_length(sorted_notelist) # atomic time unit
     music_length = round((sorted_notelist[-1].offset + sorted_notelist[-1].duration.quarterLength) / atu)
         # length of music in atu's
@@ -87,8 +87,7 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
     pitches_tensor = np.zeros((music_length, len(MIDI_PITCHES)))
     octaves_tensor = np.zeros((music_length, len(MIDI_OCTAVES)))
     lengths_tensor = np.zeros((music_length, 1))
-    if has_rest_col:
-        rests_tensor = np.ones((music_length, 1))
+    rests_tensor = np.ones((music_length, 1))
 
     prev_index = -1
     prev_note = -1
@@ -103,8 +102,7 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
         if curr_index == prev_index and note.pitch.midi <= prev_note:
             continue
 
-        if has_rest_col:
-            rests_tensor[curr_index:end_index] = 0
+        rests_tensor[curr_index:end_index] = 0
 
         pitches_tensor[curr_index:end_index] = (np.array(MIDI_PITCHES) == note.pitch.pitchClass)
         octaves_tensor[curr_index:end_index] = (np.array(MIDI_OCTAVES) == note.pitch.octave)
@@ -113,10 +111,8 @@ def notelist_to_tensor(sorted_notelist, has_rest_col=True):
         prev_index = curr_index
         lengths_tensor[curr_index:end_index] = note.duration.quarterLength
 
-    if has_rest_col:
-        tensor = np.concatenate((pitches_tensor, octaves_tensor, rests_tensor, lengths_tensor), axis=1)
-    else:
-        tensor = np.concatenate((pitches_tensor, octaves_tensor), axis=1)
+    tensor = np.concatenate((pitches_tensor, octaves_tensor, rests_tensor, lengths_tensor), axis=1)
+
     return tensor
 
 
@@ -165,7 +161,7 @@ def most_common_note_length(sorted_notelist):
 
 
 # goes from midi filepath to tensor, combining all the previous helper functions.
-def file_to_tensor(path, first_voice_only=False, has_rest_col=True, has_length_col=True, three_d_tensor=True):
+def file_to_tensor(path, first_voice_only=False, three_d_tensor=True):
     if three_d_tensor and first_voice_only:
         raise Exception('"3D tensor" and "first voice only" options are not compatible"')
     x = get_stream(path)
@@ -175,16 +171,10 @@ def file_to_tensor(path, first_voice_only=False, has_rest_col=True, has_length_c
     x = firstvoice_to_notechordlist(x)
     x = notechordlist_to_notelist(x)
     x = sorted_notelist(x)
-    if has_length_col:
-        if three_d_tensor:
-            x = notelist_to_tensors_with_3d(x)
-        else:
-            x = notelist_to_tensor_with_length(x)
+    if three_d_tensor:
+        x = notelist_to_tensors_with_3d(x)
     else:
-        if three_d_tensor:
-            raise Exception("has_length_col=False and three_d_tensor=True not implemented yet")
-        else:
-            x = notelist_to_tensor(x, has_rest_col=has_rest_col)
+        x = notelist_to_tensor_with_length(x)
     return x
 
 # # DOESN'T WORK

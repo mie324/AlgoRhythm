@@ -9,7 +9,7 @@ from torchtext import data
 import argparse
 import os
 import random
-from midi_converter import file_to_tensor
+from midi_converter import file_to_tensor, MIDI_PITCHES, MIDI_OCTAVES
 import pickle
 
 from dataset import MusicDataset
@@ -57,8 +57,7 @@ def add_shifted_copies(tensor, num_copies):
     return tensor_2
 
 # given a list of midi file paths, produces a DataLoader with those midi files
-def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=False, has_rest_col=True,
-                        has_length_col=True, three_d_tensor=True):
+def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=False, three_d_tensor=True):
     if not concat:
         raise Exception("cat_tensor=False not supported")
 
@@ -81,7 +80,7 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
     data_loader = DataLoader(dataset, batch_size=1)
     return data_loader
 
-def super_ez_trn_example_dataloader(pathlist, first_voice_only=False, has_rest_col=True, shuffle=True):
+def super_ez_trn_example_dataloader():
 
     c_row = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
                       0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
@@ -100,15 +99,14 @@ def super_ez_trn_example_dataloader(pathlist, first_voice_only=False, has_rest_c
                       0,1]).reshape((1, 25))
     cat_tensor = np.concatenate((c_row, d_row, e_row, f_row, g_row, g_row, f_row, e_row, d_row, c_row)*50)
     dataset = MusicDataset([cat_tensor])
-    data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
+    data_loader = DataLoader(dataset, batch_size=1)
     return data_loader
 
 def splits(paths_tuple, args):
     loader_tuple = ()
     for paths in paths_tuple:
         loader_tuple += files_to_dataloader(paths, concat=args.concat, num_copies=args.memory,
-                                            first_voice_only=args.first_voice_only, has_rest_col=args.has_rest_col,
-                                            has_length_col=args.has_length_col, three_d_tensor=(args.model == 'cnn'))
+                                            first_voice_only=args.first_voice_only, three_d_tensor=(args.model == 'cnn'))
     return loader_tuple
 
 
@@ -309,8 +307,6 @@ if __name__ == '__main__':
     parser.add_argument('--dim_hidden', type=int, default=100)
     parser.add_argument('--concat', type=bool, default=True)  # if True, concatenate all pieces together
     parser.add_argument('--first_voice_only', type=bool, default=False)  # if True, only take first Voice
-    parser.add_argument('--has_rest_col', type=bool, default=True)  # if True, make separate column for Rests # SOON TO BE UNSUPPORTED
-    parser.add_argument('--has_length_col', type=bool, default=True)  # if True, put note length in a column
 
     parser.add_argument('--eval_every', type=int, default=10)
 
