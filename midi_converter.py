@@ -332,6 +332,48 @@ def create_note(s, duration=1):  # converts a numpy list of one-hot to a note or
 
 
 
+# takes in 3D tensor, representing notes, and 2 1D tensors, representing rests and length
+def convert_array_to_midi_CNN_3D(note_array, rest_array, length_array, path, tempo=120):
+    s1 = music.stream.Stream()
+    mm = music.tempo.MetronomeMark(number=tempo)  # can set metronome (bpm with beat=quarter note)
+    s1.append(mm)
+    for i in range(0, note_array.shape[0]):  # goes through array
+        note_list = create_note_CNN_3D(note_array[i], rest_array[i], length_array[i])  # appends notes to stream
+        for note in note_list:
+            s1.append(note)
+
+    convert_notes_to_midi(s1, path)
+
+
+# converts a 2D one-hot array into notes, with rest and length encoded as separate variables
+# returns note list
+def create_note_CNN_3D(s, rest, duration=1):
+    pitches = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    octave_shift = -1
+    note_list = []
+    if rest == 1:
+        n = music.note.Rest()
+        n.duration.quarterLength = duration
+        note_list.append(n)
+        return note_list
+    else:
+        max_index = np.unravel_index(np.argmax(s, axis=None), s.shape)  # gets indices of max value in 2D array s
+        # if multiple max values, gets indices of 1st one
+        max_value = s[max_index]
+
+        while max_value > 0:  # while a note still exists, continue appending to note list
+            n = music.note.Note()
+            n.pitch.name = pitches[max_index[0]]
+            n.pitch.octave = max_index[1]+octave_shift
+            n.duration.quarterLength = duration
+            s[max_index] = 0  # sets array value to 0 to show it was checked
+            note_list.append(n)
+
+            max_index = np.unravel_index(np.argmax(s, axis=None), s.shape)  # gets indices of max value in 2D array s
+            max_value = s[max_index]  # if no new notes exist, returns a 0
+        return note_list
+
+
 if __name__ == '__main__':
     path1 = "./midi/bach_minuet.mid"
     path2 = "./midi/bach_wtc1/Prelude1.mid"
