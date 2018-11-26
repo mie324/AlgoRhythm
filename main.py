@@ -17,7 +17,7 @@ from dataset import MusicDataset
 from torch.utils.data import DataLoader
 
 
-from models import RNN, FFNN
+from models import RNN, FFNN, CNN3D
 
 seed=1
 np.random.seed(seed)
@@ -61,23 +61,40 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
     if not concat:
         raise Exception("cat_tensor=False not supported")
 
-    if three_d_tensor:
-        pass # TODO implement
-    else:
-        if has_rest_col and has_length_col: tensor_shape = (0,25)
-        elif not has_rest_col and not has_length_col: tensor_shape = (0,23)
-        else: tensor_shape = (0,24)
-    cat_tensor = np.zeros(tensor_shape)
-    for path in pathlist:
-        if VERBOSE:
-            print("Processing {} ...".format(path))
-        t = file_to_tensor(path, first_voice_only=first_voice_only, has_rest_col=has_rest_col,
-                           has_length_col=has_length_col, three_d_tensor=three_d_tensor)
-        cat_tensor = np.concatenate((cat_tensor, t), axis=0)
-    cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
+    if not three_d_tensor:
+        tensor_shape = (0, len(MIDI_PITCHES) + len(MIDI_OCTAVES) + 2) #2 extra cols for the length and rest
+        cat_tensor = np.zeros(tensor_shape)
+        for path in pathlist:
+            if VERBOSE:
+                print("Processing {} ...".format(path))
+            t = file_to_tensor(path, first_voice_only=first_voice_only, three_d_tensor=three_d_tensor)
+            cat_tensor = np.concatenate((cat_tensor, t), axis=0)
 
-    dataset = MusicDataset([cat_tensor], [cat_tensor_2])
-    data_loader = DataLoader(dataset, batch_size=1)
+        cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
+
+        dataset = MusicDataset([cat_tensor], [cat_tensor_2])
+        data_loader = DataLoader(dataset, batch_size=1)
+
+    else: #three_d_tensor == True
+        if num_copies != 1:
+            print("Warning, ignoring num_copies due to three_d_tensor=True")
+
+        tensor_shape = (0, len(MIDI_PITCHES), len(MIDI_OCTAVES))
+        cat_tensor = np.zeros(tensor_shape)
+        cat_rest_tensor = np.zeros((0,))
+        cat_length_tensor = np.zeros((0,))
+
+        for path in pathlist:
+            if VERBOSE:
+                print("Processing {} ...".format(path))
+            notes_tensor, rests_tensor, lengths_tensor = file_to_tensor(path, first_voice_only=first_voice_only, three_d_tensor=three_d_tensor)
+
+            cat_tensor = np.concatenate((cat_tensor, notes_tensor), axis=0)
+            cat_rest_tensor = np.concatenate((cat_rest_tensor, rests_tensor))
+            cat_length_tensor = np.concatenate((cat_length_tensor, lengths_tensor))
+
+        dataset = MusicDataset([(cat_tensor, cat_rest_tensor, cat_length_tensor)])
+        data_loader = DataLoader(dataset, batch_size=1)
     return data_loader
 
 def super_ez_trn_example_dataloader():
@@ -105,8 +122,8 @@ def super_ez_trn_example_dataloader():
 def splits(paths_tuple, args):
     loader_tuple = ()
     for paths in paths_tuple:
-        loader_tuple += files_to_dataloader(paths, concat=args.concat, num_copies=args.memory,
-                                            first_voice_only=args.first_voice_only, three_d_tensor=(args.model == 'cnn'))
+        loader_tuple += (files_to_dataloader(paths, concat=args.concat, num_copies=args.memory,
+                                            first_voice_only=args.first_voice_only, three_d_tensor=(args.model == 'cnn3d')),)
     return loader_tuple
 
 
@@ -118,7 +135,7 @@ def main(args):
 
     if args.concat:
         has_saved_dataloaders = os.path.isfile("./output/loaders.pkl")
-        if not has_saved_dataloaders:
+        if args.overwrite_cached_loaders or not has_saved_dataloaders:
             trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.8, 0.1, 0.1)
             trn_loader, val_loader, tst_loader = splits((trn_paths, val_paths, tst_paths), args)
 
@@ -157,23 +174,43 @@ def main(args):
                 predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
             elif args.model == "ffnn":
                 predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
+            elif args.model == "cnn3d":
+                pred_notes, pred_rests, pred_lengths = predictions
+                pred_notes = pred_notes[:-1, :, :]
+                pred_rests = pred_rests[:-1]
+                pred_lengths = pred_lengths[:-1]
+                predictions = torch.cat((pred_notes.view((pred_notes.shape[0],-1)), pred_rests.unsqueeze(1), pred_lengths.unsqueeze(1)), dim=1) #/TODO comment
+
 
             if args.model == "ffnn":
                 label = actual[:, args.memory:, :] # remove first `memory` predictions, because the fnn doesn't predict the first `memory` notes
             elif args.model == "rnn":
                 label = tensor[:, 1:, :] # remove first prediction, because the rnn doesn't predict the first note
+            elif args.model == "cnn3d":
+                label_notes, label_rests, label_lengths = tensor
+                label_notes = label_notes.squeeze()
+                label_rests = label_rests.squeeze()
+                label_lengths = label_lengths.squeeze()
+
+                memory = label_notes.shape[0] - pred_notes.shape[0]#/
+                label_notes = label_notes[memory:, :, :]
+                label_rests = label_rests[memory:]
+                label_lengths = label_lengths[memory:]
+                label = torch.cat((label_notes.view((pred_notes.shape[0],-1)), label_rests.unsqueeze(1), label_lengths.unsqueeze(1)), dim=1) #/TODO comment
+
 
             batch_loss = loss_fnc(input=predictions, target=label.float())
             accum_loss += batch_loss
             batch_loss.backward()
             optimizer.step()
 
-            corr = (binarize_pred(np.array(predictions.detach())[0]) == label)[0]
-            corr = np.all(np.array(corr), axis=1)
-            tot_corr += int(corr.sum())
-            denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
-            # print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), corr.sum()/len(corr)))
-            if t % args.eval_every == 0: #/make validation work
+            #corr = (binarize_pred(np.array(predictions.detach())[0]) == label)[0]
+            #corr = np.all(np.array(corr), axis=1)
+            #tot_corr += int(corr.sum())
+            #denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
+
+            print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), -1))#corr.sum()/len(corr) instead of -1 TODO
+            if False and t % args.eval_every == 0: #/make validation work
                 val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
                 trn_acc_arr[t // args.eval_every] = float(tot_corr) / denominator
                 val_acc_arr[t // args.eval_every] = val_acc
@@ -218,18 +255,6 @@ def main(args):
 ######
 
 
-# def binarize_pred_old(pred): #/hardcoded rn
-#     REST_THRESHOLD = 0.8
-#     for i in range(pred.shape[0]):
-#         if pred[i,23] > REST_THRESHOLD:
-#             pred[i,23] = 1
-#             pred[i,0:23] = 0
-#         else:
-#             pred[i,0:12] = (pred[i,0:12] == np.max(pred[i,0:12]))
-#             pred[i,12:23] = (pred[i,12:23] == np.max(pred[i,12:23]))
-#             pred[i,23] = 0
-#     return pred
-
 def binarize_pred(pred): #/hardcoded rn
     REST_THRESHOLD = 0.8
     is_note = pred[:, 23:24] < REST_THRESHOLD
@@ -245,8 +270,10 @@ def load_model(args):
         model = RNN(25, args.dim_hidden, 25)
     elif args.model == 'ffnn':
         model = FFNN(25, args.dim_hidden, memory=args.memory, num_hidden_layers=args.num_hidden_layers)
+    elif args.model == 'cnn3d':
+        model = CNN3D((10,10),((4,4,2),(7,12,2)),10,7,10,7,2,100) #/TODO un hard code
     else:
-        raise Exception("Only rnn and ffnn model type currently supported")
+        raise Exception("Only rnn, ffnn, cnn3d model types currently supported")
 
     if args.loss_fn == 'mse':
         loss_fn = torch.nn.MSELoss()
@@ -297,7 +324,7 @@ if __name__ == '__main__':
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=4000)
-    parser.add_argument('--model', type=str, default="ffnn")
+    parser.add_argument('--model', type=str, default="cnn3d")
     parser.add_argument('--emb_dim', type=int, default=100)
     parser.add_argument('--rnn_hidden_dim', type=int, default=100)
     parser.add_argument('--loss_fn', type=str, default="mse")
@@ -307,6 +334,7 @@ if __name__ == '__main__':
     parser.add_argument('--dim_hidden', type=int, default=100)
     parser.add_argument('--concat', type=bool, default=True)  # if True, concatenate all pieces together
     parser.add_argument('--first_voice_only', type=bool, default=False)  # if True, only take first Voice
+    parser.add_argument('--overwrite_cached_loaders', type=bool, default=False)  # overwrite the loaders.pkl file
 
     parser.add_argument('--eval_every', type=int, default=10)
 

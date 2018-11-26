@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from midi_converter import MIDI_PITCHES, MIDI_OCTAVES
 
 class RNN(nn.Module):
     def __init__(self, dim_in, dim_hidden, dim_out, num_layers=5):
@@ -22,10 +23,10 @@ class RNN(nn.Module):
 
 
 class FFNN(nn.Module):
-    #/ TODO to try: do a convolutional thing over pitches (wraparound) and over octaves (no wraparound)
     def __init__(self, dim_music, dim_hidden, memory=3, num_hidden_layers=5):
         super(FFNN, self).__init__()
         self.hidden_layers = nn.ModuleList()
+        # need to use a ModuleList instead of a regular list, otherwise the backpropagation won't take these layers into account
         self.layer_in = nn.Linear(dim_music * memory, dim_hidden)
         for i in range(num_hidden_layers):
             self.hidden_layers.append(nn.Linear(dim_hidden, dim_hidden))
@@ -77,3 +78,94 @@ class CNN(nn.Module):
         x = x.view(-1)
         ######
         return x
+
+class CNN3D(nn.Module):
+    def __init__(self, n_channels_list, kernel_size_list, rest_n_channels, rest_kernel_size, length_n_channels,
+                 length_kernel_size, n_fc_hidden_layers, fc_layer_size): #kernel_size_list should be a tuple of tuples
+        super(CNN3D, self).__init__()
+
+        self.n_channels_list = n_channels_list
+        self.kernel_size_list = kernel_size_list
+        self.rest_kernel_size = rest_kernel_size
+        self.length_kernel_size = length_kernel_size
+
+        # find largest time-size of all the kernels
+        kernel_time_sizes = [kernel_size_tuple[0] for kernel_size_tuple in kernel_size_list]
+        kernel_time_sizes.extend([rest_kernel_size, length_kernel_size])
+        self.max_kernel_time_size = max(kernel_time_sizes)
+
+        self.conv_layers = nn.ModuleList()
+        for n_channels, kernel_size_tuple in zip(n_channels_list, kernel_size_list):
+            self.conv_layers.append(nn.Conv3d(1, n_channels, kernel_size_tuple))
+        self.conv_rest = nn.Conv1d(1, rest_n_channels, rest_kernel_size)
+        self.conv_length = nn.Conv1d(1, length_n_channels, length_kernel_size)
+
+        # fc_dim_in = self.n_channels_list[-1] *
+        fc_dim_in = 3820 #TODO un hard code
+        self.fc_in = nn.Linear(fc_dim_in, fc_layer_size)
+
+        self.fc_layers = nn.ModuleList()
+        for i in range(n_fc_hidden_layers):
+            self.fc_layers.append(nn.Linear(fc_layer_size, fc_layer_size))
+
+        self.fc_out = nn.Linear(fc_layer_size, len(MIDI_PITCHES) * len(MIDI_OCTAVES) + 2)
+
+    def forward(self, input):
+        # for the CNN3D, input is a tuple consisting of (the 3d tensor, rest tensor, length tensor)
+        x, r, l = input
+        for i in range(len(self.conv_layers)):
+            x2 = CNN3D.wraparound_pitch(x, dist=(self.kernel_size_list[i][1] - 1)) # dist = size of kernel in pitch dimension minus one
+            x2 = x2.float()
+            x2 = x2.unsqueeze(0)
+            x2 = self.conv_layers[i](x2)
+
+            # flatten all the outputs of all the conv layers in all dimensions except time
+            # and concatenate them, in preparation for feeding into the fcnet (fully connected net)
+            #/ maybe need to swap dims???
+            x2 = x2.squeeze()
+            x2 = x2.transpose(0,1).contiguous() #/
+            x2 = x2.view((x2.shape[0], -1))
+            x2 = x2[(self.max_kernel_time_size - self.kernel_size_list[i][0]):, :] #TODO add comment
+            if i == 0:
+                tensor_into_fcnet = x2
+            else:
+                tensor_into_fcnet = torch.cat((tensor_into_fcnet, x2), dim=1)
+
+        r = r.unsqueeze(0).float()
+        r = self.conv_rest(r)
+        r = r.squeeze()
+        r = r.transpose(0, 1).contiguous()
+        r = r.view((r.shape[0], -1))
+        r = r[(self.max_kernel_time_size - self.rest_kernel_size):, :]  # TODO add comment
+        tensor_into_fcnet = torch.cat((tensor_into_fcnet, r), dim=1)
+
+
+        l = l.unsqueeze(0).float()
+        l = self.conv_length(l)
+        l = l.squeeze()
+        l = l.transpose(0, 1).contiguous()
+        l = l.view((l.shape[0], -1))
+        l = l[(self.max_kernel_time_size - self.rest_kernel_size):, :]  # TODO add comment
+        tensor_into_fcnet = torch.cat((tensor_into_fcnet, l), dim=1)
+
+        tensor_into_fcnet = F.leaky_relu(tensor_into_fcnet)
+
+        tensor_into_fcnet = F.leaky_relu(self.fc_in(tensor_into_fcnet))
+        for i in range(len(self.fc_layers)):
+            tensor_into_fcnet = F.leaky_relu(self.fc_layers[i](tensor_into_fcnet))
+        tensor_into_fcnet = F.sigmoid(self.fc_out(tensor_into_fcnet)) #TODO change to remove warning
+        output_rest_tensor = tensor_into_fcnet[:, 0]
+        output_length_tensor = tensor_into_fcnet[:, 1]
+        output_notes_tensor = tensor_into_fcnet[:, 2:]
+
+        output_notes_tensor = output_notes_tensor.view((-1,len(MIDI_PITCHES), len(MIDI_OCTAVES)))
+        return output_notes_tensor, output_rest_tensor, output_length_tensor
+
+
+    @staticmethod
+    def wraparound_pitch(tensor, dist=None):
+        # assuming pitch dimension is 2
+        if dist is None:
+             dist = tensor.shape[2] - 1
+        return torch.cat((tensor[:,:,-dist:,:],tensor,tensor[:,:,:dist,:]), dim=2)
+

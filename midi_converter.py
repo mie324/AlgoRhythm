@@ -136,9 +136,22 @@ def notelist_to_tensor_with_length(sorted_notelist):
     tensor = np.concatenate((pitches_tensor, octaves_tensor, rests_tensor, lengths_tensor), axis=1)
     return tensor
 
+#TODO keep all notes not just top
 def notelist_to_tensors_with_3d(sorted_notelist):
-    pass # TODO implement
+    music_length = len(sorted_notelist)
+    notes_tensor_3d = np.zeros((music_length, len(MIDI_PITCHES), len(MIDI_OCTAVES)))
+    lengths_tensor = np.zeros((music_length,))
+    rests_tensor = np.ones((music_length,))
+    for i, note in enumerate(sorted_notelist):
+        if isinstance(note, music.note.Rest):  # skip if it's a rest
+            continue
 
+        rests_tensor[i] = 0  # else make it a rest
+        lengths_tensor[i] = note.duration.quarterLength
+        notes_tensor_3d[i] = (np.array(MIDI_PITCHES) == note.pitch.pitchClass).reshape((-1,1)) \
+                             * (np.array(MIDI_OCTAVES) == note.pitch.octave)
+
+    return notes_tensor_3d, rests_tensor, lengths_tensor
 
 # finds the most common note length of a sorted notelist, to be used as an atomic time unit.
 def most_common_note_length(sorted_notelist):
