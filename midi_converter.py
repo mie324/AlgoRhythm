@@ -146,6 +146,29 @@ def notelist_to_tensor2(sorted_notelist, has_rest_col=True):
     return tensor
 
 
+# convert sorted notelist into tensor for Convolution
+def notelist_to_tensor3(sorted_notelist):
+    music_length = len(sorted_notelist)
+    print("music length: " + str(music_length))
+    notes_tensor = np.zeros((music_length, len(MIDI_PITCHES)*len(MIDI_OCTAVES)))
+    lengths_tensor = np.zeros((music_length, 1))
+    rests_tensor = np.ones((music_length, 1))
+
+    for num, note in enumerate(sorted_notelist):
+        if isinstance(note, music.note.Rest):  # skip if it's a rest
+            lengths_tensor[num] = note.duration.quarterLength  # adds in length of note
+            continue
+
+        rests_tensor[num] = 0  # else make it a note
+        note_point = note.pitch.pitchClass + note.pitch.octave*11
+        notes_tensor[num] = np.zeros(132)
+        notes_tensor[num, note_point] = 1  # makes a one-hot to represent each note
+        lengths_tensor[num] = note.duration.quarterLength  # adds in length of note
+
+    tensor = np.concatenate((notes_tensor, rests_tensor, lengths_tensor), axis=1)
+    return tensor
+
+
 
 # finds the most common note length of a sorted notelist, to be used as an atomic time unit.
 def most_common_note_length(sorted_notelist):
@@ -177,9 +200,9 @@ def file_to_tensor(path, first_voice_only=True, has_rest_col=True, has_length_co
     x = notechordlist_to_notelist(x)
     x = sorted_notelist(x)
     if has_length_col:
-        x = notelist_to_tensor2(x, has_rest_col=has_rest_col)
+        x = notelist_to_tensor3(x)
     else:
-        x = notelist_to_tensor(x, has_rest_col=has_rest_col)
+        x = notelist_to_tensor3(x)
     return x
 
 # # DOESN'T WORK
@@ -257,6 +280,25 @@ def convert_array_to_midi2(array, path, tempo=120):
 
     convert_notes_to_midi(s1, path)
 
+def convert_array_to_midi_CNN(array, path, tempo=120):
+    s1 = music.stream.Stream()
+    s1.append(music.tempo.MetronomeMark(number=tempo))  #adds tempo
+
+    # rounds durations to nearest power of 2
+    array[:, 133] = np.exp2(np.round(np.log2(array[:, 133])))
+
+    # finds number of beats each note is, rounded to nearest 1/4
+    mean_beat = np.mean(array[:, 133])  # avg duration of beats
+    #array[:, 24] = array[:, 24]/mean_beat
+    #array[:, 24] = np.round(array[:, 24]*2)
+    #array[:, 24] = array[:, 24]/2
+
+    for i in range(0, array.shape[0]):  # goes through array
+        s1.append(create_note_CNN(array[i], array[i, 133]))  # appends notes to stream, adds in length
+
+    convert_notes_to_midi(s1, path)
+
+
 # v2 method: takes in 2d array, converts into file.  WORK IN PROGRESS
 def convert_array_to_midi_alter(array, path, tempo=120):
     # new features: tempo alterable, able to change note duration.
@@ -322,6 +364,25 @@ def create_note(s, duration=1):  # converts a numpy list of one-hot to a note or
         return n
 
 
+def create_note_CNN(s, duration=1):  # converts a numpy list of one-hot to a note or rest
+    pitches = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"]
+    octave_shift = -1
+    if s[132] == 1:
+        n = music.note.Rest()
+        n.duration.quarterLength = duration
+        return n
+    else:
+        index_note = int(np.argmax(s[0:132]))  # find which pitch from one-hot
+
+        # use the note to find pitch and octave
+        index_pitch = index_note%12
+        index_octave = np.floor(index_note/12)
+
+        n = music.note.Note()
+        n.pitch.name = pitches[index_pitch]
+        n.pitch.octave = index_octave+octave_shift
+        n.duration.quarterLength = duration
+        return n
 
 
 if __name__ == '__main__':

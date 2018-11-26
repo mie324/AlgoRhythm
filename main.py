@@ -17,7 +17,7 @@ from dataset import MusicDataset
 from torch.utils.data import DataLoader
 
 
-from models import RNN, FFNN
+from models import RNN, FFNN, CNN_v2
 
 seed=1
 np.random.seed(seed)
@@ -58,7 +58,7 @@ def add_shifted_copies(tensor, num_copies):
 
 #current workaround: concatenate all of them lol
 def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True, has_rest_col=True, has_length_col=True):
-    cat_tensor = np.zeros((0,25)) #/ un-hard-code the 24
+    cat_tensor = np.zeros((0, 134)) #/ un-hard-code the 24
     for path in pathlist:
         if VERBOSE:
             print("Processing {} ...".format(path))
@@ -72,21 +72,26 @@ def files_to_cat_tensor_dataloader(pathlist, num_copies=1, first_voice_only=True
 
 def super_ez_trn_example_dataloader(pathlist, first_voice_only=True, has_rest_col=True, shuffle=True):
 
-    c_row = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0,1]).reshape((1, 25))
-    d_row = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0,1]).reshape((1, 25))
-    e_row = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0,1]).reshape((1, 25))
-    f_row = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0,1]).reshape((1, 25))
-    g_row = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
-                      0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
-                      0,1]).reshape((1, 25))
+    # c_row = np.array([1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    #                   0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    #                   0,1]).reshape((1, 25))
+    # d_row = np.array([0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0,
+    #                   0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    #                   0,1]).reshape((1, 25))
+    # e_row = np.array([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0,
+    #                   0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    #                   0,1]).reshape((1, 25))
+    # f_row = np.array([0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0,
+    #                   0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    #                   0,1]).reshape((1, 25))
+    # g_row = np.array([0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0,
+    #                   0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0,
+    #                   0,1]).reshape((1, 25))
+    c_row = np.zeros(1, 134)
+    c_row = np.zeros(1, 134)
+    c_row = np.zeros(1, 134)
+    c_row = np.zeros(1, 134)
+    c_row = np.zeros(1, 134)
     cat_tensor = np.concatenate((c_row, d_row, e_row, f_row, g_row, g_row, f_row, e_row, d_row, c_row)*50)
     dataset = MusicDataset([cat_tensor])
     data_loader = DataLoader(dataset, batch_size=1, shuffle=shuffle)
@@ -140,6 +145,7 @@ def main(args):
             optimizer.zero_grad()
 
             predictions = model(tensor)
+            predictions = predictions.unsqueeze(0)
 
             if args.model == "rnn":
                 predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
@@ -161,32 +167,34 @@ def main(args):
             tot_corr += int(corr.sum())
             denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
             # print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), corr.sum()/len(corr)))
-            if t % args.eval_every == 0: #/make validation work
-                val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
-                trn_acc_arr[t // args.eval_every] = float(tot_corr) / denominator
-                val_acc_arr[t // args.eval_every] = val_acc
+            print("epoch {:>4d}".format(epoch))
+            # if t % args.eval_every == 0: #/make validation work
+            #     val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
+            #     trn_acc_arr[t // args.eval_every] = float(tot_corr) / denominator
+            #     val_acc_arr[t // args.eval_every] = val_acc
+            #
+            #     print(
+            #         "Epoch: {:>3d}, Step: {:>7d} | Trn acc: {:.6f} | Trn loss (*1e6): {:.6f} | Val acc: {:.6f} | Val loss (*1e6): {:.6f}"
+            #             .format(epoch + 1,
+            #                       t + 1,
+            #                       trn_acc_arr[t // args.eval_every],
+            #                       accum_loss / denominator * 1e6,
+            #                       val_acc,
+            #                       val_loss * 1e6))
+            #     if val_acc > best_val_acc:
+            #         torch.save(model, "./model_dir/model_best_val_acc.pt")
+            #         best_val_acc = val_acc
+            #
+            #     accum_loss = 0
+            #     # mov_avg_corr = 0
+            #     denominator = 0
 
-                print(
-                    "Epoch: {:>3d}, Step: {:>7d} | Trn acc: {:.6f} | Trn loss (*1e6): {:.6f} | Val acc: {:.6f} | Val loss (*1e6): {:.6f}"
-                        .format(epoch + 1,
-                                  t + 1,
-                                  trn_acc_arr[t // args.eval_every],
-                                  accum_loss / denominator * 1e6,
-                                  val_acc,
-                                  val_loss * 1e6))
-                if val_acc > best_val_acc:
-                    torch.save(model, "./model_dir/model_best_val_acc.pt")
-                    best_val_acc = val_acc
-
-                accum_loss = 0
-                # mov_avg_corr = 0
-                denominator = 0
             t = t + 1
         if epoch % 100 == 0:
-            torch.save(model, "./model_dir/model.pt")
+            torch.save(model, "./model_dir/model_CNN.pt")
     #print("Train acc: {}".format(float(tot_corr) / len(trn_loader.dataset)))
     # filename = datetime.datetime.now()
-    torch.save(model, "./model_dir/model.pt")
+    torch.save(model, "./model_dir/model_CNN.pt")
     # os.open("./model_dir/model_info.csv", mode='a')
 
 
@@ -220,19 +228,20 @@ def main(args):
 
 def binarize_pred(pred): #/hardcoded rn
     REST_THRESHOLD = 0.8
-    is_note = pred[:, 23:24] < REST_THRESHOLD
-    pitch = (pred[:,0:12] == np.max(pred[:,0:12], axis=1).reshape(-1,1))
-    octave = (pred[:,12:23] == np.max(pred[:,12:23], axis=1).reshape(-1,1))
-    pred[:, 0:12] = is_note * pitch
-    pred[:, 12:23] = is_note * octave
-    pred[:,23:24] =  1 - is_note
+    is_note = pred[:, 132:133] < REST_THRESHOLD
+    pitch = (pred[:,0:132] == np.max(pred[:,0:132], axis=1).reshape(-1,1))
+    #octave = (pred[:,12:23] == np.max(pred[:,12:23], axis=1).reshape(-1,1))
+    pred[:, 0:132] = is_note * pitch
+    #pred[:, 12:23] = is_note * octave
+    pred[:,132:133] =  1 - is_note
     return pred
 
 def load_model(args):
     if args.model == 'rnn':
         model = RNN(25, args.dim_hidden, 25)
     elif args.model == 'ffnn':
-        model = FFNN(25, args.dim_hidden, memory=args.memory, num_hidden_layers=args.num_hidden_layers)
+        # model = FFNN(25, args.dim_hidden, memory=args.memory, num_hidden_layers=args.num_hidden_layers)
+        model = CNN_v2(memory=args.memory)
     else:
         raise Exception("Only rnn and ffnn model type currently supported")
 
@@ -284,13 +293,13 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
-    parser.add_argument('--epochs', type=int, default=4000)
+    parser.add_argument('--epochs', type=int, default=400)
     parser.add_argument('--model', type=str, default="ffnn")
     parser.add_argument('--emb_dim', type=int, default=100)
     parser.add_argument('--rnn_hidden_dim', type=int, default=100)
     parser.add_argument('--loss_fn', type=str, default="mse")
     parser.add_argument('--optimizer', type=str, default="adam")
-    parser.add_argument('--memory', type=int, default=7)
+    parser.add_argument('--memory', type=int, default=8)
     parser.add_argument('--num_hidden_layers', type=int, default=3)
     parser.add_argument('--dim_hidden', type=int, default=100)
     parser.add_argument('--concat', type=bool, default=True) # whether different pieces are concatenated together or not
