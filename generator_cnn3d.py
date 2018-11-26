@@ -16,7 +16,7 @@ if __name__ == "__main__":
 
     epoch = 600
     n_notes_list = [1,2,3,4]
-    model = torch.load("./model_dir/{}_epoch_cnn_model.pt".format(epoch))
+    model = torch.load("./model_dir/{}_epoch_cnn3d_model.pt".format(epoch))
 
     for n_notes in n_notes_list:
         # create an initializing sequence consisting of the chords (Cmaj, Fmaj, Gmaj, Cmaj) x2

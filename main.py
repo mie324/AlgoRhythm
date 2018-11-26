@@ -271,7 +271,7 @@ def main(args):
                 denominator = 0
             t = t + 1
         if epoch % 100 == 0:
-            torch.save(model, "./model_dir/model.pt")
+            torch.save(model, "./model_dir/{}_epoch_{}_model.pt".format(epoch, args.model))
     #print("Train acc: {}".format(float(tot_corr) / len(trn_loader.dataset)))
     # filename = datetime.datetime.now()
     torch.save(model, "./model_dir/model.pt")
