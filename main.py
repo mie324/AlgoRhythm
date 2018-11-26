@@ -71,7 +71,8 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
             cat_tensor = np.concatenate((cat_tensor, t), axis=0)
 
         cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
-
+        if args.divide_data_pieces != 1:
+            raise Exception("not supported yet")
         dataset = MusicDataset([cat_tensor], [cat_tensor_2])
         data_loader = DataLoader(dataset, batch_size=1)
 
@@ -93,8 +94,15 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
             cat_rest_tensor = np.concatenate((cat_rest_tensor, rests_tensor))
             cat_length_tensor = np.concatenate((cat_length_tensor, lengths_tensor))
 
-        dataset = MusicDataset([(cat_tensor, cat_rest_tensor, cat_length_tensor)])
-        data_loader = DataLoader(dataset, batch_size=1)
+        dataset_list = []
+        divided_length = round(float(np.floor(len(cat_tensor) / args.divide_data_pieces)))
+        for i in range(args.divide_data_pieces):
+            temp_cat_tensor = cat_tensor[i * divided_length : (i+1) * divided_length]
+            temp_cat_rest_tensor = cat_rest_tensor[i * divided_length : (i+1) * divided_length]
+            temp_cat_length_tensor = cat_length_tensor[i * divided_length : (i+1) * divided_length]
+            dataset_list.append((temp_cat_tensor, temp_cat_rest_tensor, temp_cat_length_tensor))
+        dataset = MusicDataset(dataset_list)
+        data_loader = DataLoader(dataset, batch_size=1, shuffle=True)
     return data_loader
 
 def super_ez_trn_example_dataloader():
@@ -204,12 +212,43 @@ def main(args):
             batch_loss.backward()
             optimizer.step()
 
-            #corr = (binarize_pred(np.array(predictions.detach())[0]) == label)[0]
-            #corr = np.all(np.array(corr), axis=1)
-            #tot_corr += int(corr.sum())
-            #denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
+            if args.model == "ffnn" or args.model == "rnn":
+                corr = (binarize_pred_2d(np.array(predictions.detach())[0]) == label)[0]
+                corr = np.all(np.array(corr), axis=1)
+                tot_corr += int(corr.sum())
+                denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
+            elif args.model == "cnn3d":
+                pred_notes = np.array(pred_notes.detach())
+                pred_rests = np.array(pred_rests.detach())
+                pred_lengths = np.array(pred_lengths.detach())
+                pred_notes, pred_rests, pred_lengths = binarize_pred_3d(pred_notes, pred_rests, pred_lengths, args.n_notes)
 
-            print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), -1))#corr.sum()/len(corr) instead of -1 TODO
+                label_notes = np.array(label_notes)
+                corr_notes = (pred_notes == label_notes)
+
+                num_corr_notes = np.logical_and(corr_notes, pred_notes)
+                num_corr_notes = num_corr_notes.reshape((num_corr_notes.shape[0], -1))
+                num_corr_notes = np.sum(num_corr_notes, axis=1)
+
+                corr_rests = (pred_rests == label_rests)
+                corr_lengths = (pred_lengths == label_lengths)
+
+                corr_notes = corr_notes.reshape((corr_notes.shape[0], -1))
+                corr_notes = np.all(np.array(corr_notes), axis=1)
+
+
+
+                # tot_corr_notes += int(corr_notes.sum())
+                # tot_corr_rests += int(corr_rests.sum())
+                # tot_corr_lengths += int(corr_lengths.sum())
+
+                denominator += corr_notes.shape[0]  # corr.shape[0] is # notes, so this will calculate the loss per note
+
+            if args.model == "ffnn" or args.model == "rnn":
+                print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), float(corr.sum())/len(corr)))
+            elif args.model == "cnn3d":
+                print("epoch {:>4d}, batch {:>3d}, loss {:>.6f}, note acc {:>.6f}, avg num corr notes {:>.6f}, rest acc {:>.6f}, length acc {:>.6f}"
+                      .format(epoch, i, float(batch_loss), float(corr_notes.sum())/len(corr_notes), float(num_corr_notes.sum())/len(num_corr_notes), float(corr_rests.sum())/len(corr_rests), float(corr_lengths.sum())/len(corr_lengths)))
             if False and t % args.eval_every == 0: #/make validation work
                 val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
                 trn_acc_arr[t // args.eval_every] = float(tot_corr) / denominator
@@ -255,7 +294,7 @@ def main(args):
 ######
 
 
-def binarize_pred(pred): #/hardcoded rn
+def binarize_pred_2d(pred): #/hardcoded rn
     REST_THRESHOLD = 0.8
     is_note = pred[:, 23:24] < REST_THRESHOLD
     pitch = (pred[:,0:12] == np.max(pred[:,0:12], axis=1).reshape(-1,1))
@@ -264,6 +303,27 @@ def binarize_pred(pred): #/hardcoded rn
     pred[:, 12:23] = is_note * octave
     pred[:,23:24] =  1 - is_note
     return pred
+
+def binarize_pred_3d(pred_notes, pred_rests, pred_lengths, n_notes):
+    # rest_threshold = 0.8 #np.mean(pred_rests) + np.std(pred_rests) * 1.3 # make ~10% of notes rests
+    #note_relative_threshold = 0.3
+
+    # is_note = pred_rests < rest_threshold
+    pred_rests = np.zeros(pred_rests.shape)
+    # TODO implement rests; this assumes rests never happen for now
+    note_values = _max_k_last_axis(pred_notes.reshape((pred_notes.shape[0], -1)), n_notes)
+    new_pred_notes = np.zeros(pred_notes.shape)
+    for i in range(n_notes):
+        new_pred_notes = np.logical_or(new_pred_notes, pred_notes == note_values[:, i:(i+1), np.newaxis])
+
+    pred_notes = new_pred_notes
+    pred_lengths = np.exp2(np.round(np.log2(pred_lengths)))
+
+    return pred_notes, pred_rests, pred_lengths
+
+
+def _max_k_last_axis(array, k):
+    return np.partition(array, -k)[:,-k:]
 
 def load_model(args):
     if args.model == 'rnn':
@@ -305,7 +365,7 @@ def evaluate(model, loader, args, loss_fnc):
         elif args.model == "rnn":
             label = tensor[:, 1:, :]  # remove first prediction, because the rnn doesn't predict the first note
 
-        corr = (binarize_pred(np.array(predictions.detach())[0]) == label)[0]
+        corr = (binarize_pred_2d(np.array(predictions.detach())[0]) == label)[0]
         corr = np.all(np.array(corr), axis=1)
         tot_corr += int(corr.sum())
 
@@ -334,7 +394,9 @@ if __name__ == '__main__':
     parser.add_argument('--dim_hidden', type=int, default=100)
     parser.add_argument('--concat', type=bool, default=True)  # if True, concatenate all pieces together
     parser.add_argument('--first_voice_only', type=bool, default=False)  # if True, only take first Voice
-    parser.add_argument('--overwrite_cached_loaders', type=bool, default=False)  # overwrite the loaders.pkl file
+    parser.add_argument('--n_notes', type=int, default=4) # number of simultaneous notes in each chord
+    parser.add_argument('--divide_data_pieces', type=int, default=5)  # chop up the midi file tensor into smaller pieces
+    parser.add_argument('--overwrite_cached_loaders', type=bool, default=True)  # overwrite the loaders.pkl file
 
     parser.add_argument('--eval_every', type=int, default=10)
 

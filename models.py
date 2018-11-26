@@ -122,7 +122,7 @@ class CNN3D(nn.Module):
             # flatten all the outputs of all the conv layers in all dimensions except time
             # and concatenate them, in preparation for feeding into the fcnet (fully connected net)
             #/ maybe need to swap dims???
-            x2 = x2.squeeze()
+            x2 = x2.squeeze() # this may error if length of music is equal to time-size of a convolution, because then that dimension will also be 1
             x2 = x2.transpose(0,1).contiguous() #/
             x2 = x2.view((x2.shape[0], -1))
             x2 = x2[(self.max_kernel_time_size - self.kernel_size_list[i][0]):, :] #TODO add comment
