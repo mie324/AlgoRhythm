@@ -339,8 +339,11 @@ def convert_array_to_midi_CNN_3D(note_array, rest_array, length_array, path, tem
     s1.append(mm)
     for i in range(0, note_array.shape[0]):  # goes through array
         note_list = create_note_CNN_3D(note_array[i], rest_array[i], length_array[i])  # appends notes to stream
-        for note in note_list:
-            s1.append(note)
+        if len(note_list) == 1:
+            s1.append(note_list[0])
+        else:
+            chord = music.chord.Chord(note_list)
+            s1.append(chord)
 
     convert_notes_to_midi(s1, path)
 
