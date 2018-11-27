@@ -190,12 +190,6 @@ def main(args):
 
 
             denominator += num_notes
-            if True:pass
-            elif args.model == "ffnn" or args.model == "rnn":
-                print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), acc))
-            elif args.model == "cnn3d":
-                print("epoch {:>4d}, batch {:>3d}, loss {:>.6f}, note acc {:>.6f}, avg num corr notes {:>.6f}, rest acc {:>.6f}, length acc {:>.6f}"
-                      .format(epoch, i, float(batch_loss), acc['note_acc'], acc['avg_num_corr_notes'], acc['rest_acc'], acc['length_acc']))
 
             if t % args.eval_every == 0:
                 val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
