@@ -32,7 +32,7 @@ PATHS.extend(["./midi/bach_wtc2/Prelude{}.mid".format(i) for i in [1, 2, 3, 4, 5
 PATHS.extend(["./midi/bach_wtc2/Fugue{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]])
 PATHS.extend(["./midi/bach_2partinventions/invent{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]])
 PATHS.extend(["./midi/bach_3partinventions/sinfon{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]])
-PATHS.extend(["./midi/bach_goldberg_variations_complete.mid"])
+# PATHS.extend(["./midi/bach_goldberg_variations_complete.mid"])
 
 
 
@@ -431,7 +431,7 @@ if __name__ == '__main__':
     parser.add_argument('--first_voice_only', type=bool, default=False)  # if True, only take first Voice
     parser.add_argument('--n_notes', type=int, default=4) # number of simultaneous notes in each chord
 
-    parser.add_argument('--divide_data_pieces', type=int, default=50)  # chop up the midi file tensor into smaller pieces
+    parser.add_argument('--divide_data_pieces', type=int, default=20)  # chop up the midi file tensor into smaller pieces
 
     parser.add_argument('--overwrite_cached_loaders', type=bool, default=True)  # overwrite the loaders.pkl file
 
