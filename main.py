@@ -79,7 +79,7 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
         cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
         if args.divide_data_pieces != 1:
             raise Exception("not supported yet")
-        dataset = MusicDataset([cat_tensor], [cat_tensor_2])
+        dataset = MusicDataset([cat_tensor_2], [cat_tensor])
         data_loader = DataLoader(dataset, batch_size=1)
 
     else: #three_d_tensor == True
@@ -178,8 +178,8 @@ def main(args):
         tot_corr = 0
         denominator = 0
         for i, batch in enumerate(trn_loader):
-            tensor = batch['data_with_shifted']
-            actual = batch['data']
+            tensor = batch['data']
+            actual = batch['label']
             optimizer.zero_grad()
 
             predictions = model(tensor)
@@ -356,8 +356,8 @@ def evaluate(model, loader, args, loss_fnc):
     tot_corr = 0
     tot_loss = 0
     for i, batch in enumerate(loader):
-        tensor = batch['data_with_shifted']
-        actual = batch['data']
+        tensor = batch['data']
+        actual = batch['label']
         predictions = model(tensor)
 
         if args.model == "rnn":
