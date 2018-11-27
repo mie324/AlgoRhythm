@@ -28,6 +28,12 @@ random.seed(seed)
 PATHS = []
 PATHS.extend(["./midi/bach_wtc1/Prelude{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 16, 17, 18, 21, 22, 23, 24]])
 PATHS.extend(["./midi/bach_wtc1/Fugue{}.mid".format(i) for i in [1, 2, 3, 4, 5, 7, 8, 9, 10, 11, 13, 14, 15, 16, 17, 18, 20, 21, 22, 23, 24]])
+PATHS.extend(["./midi/bach_wtc2/Prelude{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]])
+PATHS.extend(["./midi/bach_wtc2/Fugue{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]])
+PATHS.extend(["./midi/bach_2partinventions/invent{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]])
+PATHS.extend(["./midi/bach_3partinventions/sinfon{}.mid".format(i) for i in [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15]])
+PATHS.extend(["./midi/bach_goldberg_variations_complete.mid"])
+
 
 
 
@@ -144,7 +150,7 @@ def main(args):
     if args.concat:
         has_saved_dataloaders = os.path.isfile("./output/loaders.pkl")
         if args.overwrite_cached_loaders or not has_saved_dataloaders:
-            trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.8, 0.1, 0.1)
+            trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.85, 0.15, 0)
             trn_loader, val_loader, tst_loader = splits((trn_paths, val_paths, tst_paths), args)
 
             with open("./output/loaders.pkl", 'wb') as f:
@@ -395,7 +401,9 @@ if __name__ == '__main__':
     parser.add_argument('--concat', type=bool, default=True)  # if True, concatenate all pieces together
     parser.add_argument('--first_voice_only', type=bool, default=False)  # if True, only take first Voice
     parser.add_argument('--n_notes', type=int, default=4) # number of simultaneous notes in each chord
-    parser.add_argument('--divide_data_pieces', type=int, default=5)  # chop up the midi file tensor into smaller pieces
+
+    parser.add_argument('--divide_data_pieces', type=int, default=50)  # chop up the midi file tensor into smaller pieces
+
     parser.add_argument('--overwrite_cached_loaders', type=bool, default=True)  # overwrite the loaders.pkl file
 
     parser.add_argument('--eval_every', type=int, default=10)
