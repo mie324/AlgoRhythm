@@ -169,7 +169,6 @@ def main(args):
     n_steps_per_epoch = int(np.ceil(n_trn_examples / args.batch_size))
     n_entries = int(np.ceil(args.epochs * n_steps_per_epoch / args.eval_every))
     trn_acc_arr = np.zeros(n_entries)
-    val_acc_arr = np.zeros(n_entries)
     best_val_acc = -1
 
     t = 0  # used to count batch number putting through the model
@@ -183,94 +182,56 @@ def main(args):
             optimizer.zero_grad()
 
             predictions = model(tensor)
+            num_notes, batch_loss, acc = get_evaluation_stats(tensor, actual, predictions, loss_fnc, args)
 
-            if args.model == "rnn":
-                predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
-            elif args.model == "ffnn":
-                predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
-            elif args.model == "cnn3d":
-                pred_notes, pred_rests, pred_lengths = predictions
-                pred_notes = pred_notes[:-1, :, :]
-                pred_rests = pred_rests[:-1]
-                pred_lengths = pred_lengths[:-1]
-                predictions = torch.cat((pred_notes.view((pred_notes.shape[0],-1)), pred_rests.unsqueeze(1), pred_lengths.unsqueeze(1)), dim=1) #/TODO comment
-
-
-            if args.model == "ffnn":
-                label = actual[:, args.memory:, :] # remove first `memory` predictions, because the fnn doesn't predict the first `memory` notes
-            elif args.model == "rnn":
-                label = tensor[:, 1:, :] # remove first prediction, because the rnn doesn't predict the first note
-            elif args.model == "cnn3d":
-                label_notes, label_rests, label_lengths = tensor
-                label_notes = label_notes.squeeze()
-                label_rests = label_rests.squeeze()
-                label_lengths = label_lengths.squeeze()
-
-                memory = label_notes.shape[0] - pred_notes.shape[0]#/
-                label_notes = label_notes[memory:, :, :]
-                label_rests = label_rests[memory:]
-                label_lengths = label_lengths[memory:]
-                label = torch.cat((label_notes.view((pred_notes.shape[0],-1)), label_rests.unsqueeze(1), label_lengths.unsqueeze(1)), dim=1) #/TODO comment
-
-
-            batch_loss = loss_fnc(input=predictions, target=label.float())
             accum_loss += batch_loss
             batch_loss.backward()
             optimizer.step()
 
-            if args.model == "ffnn" or args.model == "rnn":
-                corr = (binarize_pred_2d(np.array(predictions.detach())[0]) == label)[0]
-                corr = np.all(np.array(corr), axis=1)
-                tot_corr += int(corr.sum())
-                denominator += corr.shape[0] #corr.shape[0] is # notes, so this will calculate the loss per note
-            elif args.model == "cnn3d":
-                pred_notes = np.array(pred_notes.detach())
-                pred_rests = np.array(pred_rests.detach())
-                pred_lengths = np.array(pred_lengths.detach())
-                pred_notes, pred_rests, pred_lengths = binarize_pred_3d(pred_notes, pred_rests, pred_lengths, args.n_notes)
 
-                label_notes = np.array(label_notes)
-                corr_notes = (pred_notes == label_notes)
-
-                num_corr_notes = np.logical_and(corr_notes, pred_notes)
-                num_corr_notes = num_corr_notes.reshape((num_corr_notes.shape[0], -1))
-                num_corr_notes = np.sum(num_corr_notes, axis=1)
-
-                corr_rests = (pred_rests == label_rests)
-                corr_lengths = (pred_lengths == label_lengths)
-
-                corr_notes = corr_notes.reshape((corr_notes.shape[0], -1))
-                corr_notes = np.all(np.array(corr_notes), axis=1)
-
-
-
-                # tot_corr_notes += int(corr_notes.sum())
-                # tot_corr_rests += int(corr_rests.sum())
-                # tot_corr_lengths += int(corr_lengths.sum())
-
-                denominator += corr_notes.shape[0]  # corr.shape[0] is # notes, so this will calculate the loss per note
-
-            if args.model == "ffnn" or args.model == "rnn":
-                print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), float(corr.sum())/len(corr)))
+            denominator += num_notes
+            if True:pass
+            elif args.model == "ffnn" or args.model == "rnn":
+                print("epoch {:>4d}, loss {:>.6f}, acc {:>.6f}".format(epoch, float(batch_loss), acc))
             elif args.model == "cnn3d":
                 print("epoch {:>4d}, batch {:>3d}, loss {:>.6f}, note acc {:>.6f}, avg num corr notes {:>.6f}, rest acc {:>.6f}, length acc {:>.6f}"
-                      .format(epoch, i, float(batch_loss), float(corr_notes.sum())/len(corr_notes), float(num_corr_notes.sum())/len(num_corr_notes), float(corr_rests.sum())/len(corr_rests), float(corr_lengths.sum())/len(corr_lengths)))
-            if False and t % args.eval_every == 0: #/make validation work
+                      .format(epoch, i, float(batch_loss), acc['note_acc'], acc['avg_num_corr_notes'], acc['rest_acc'], acc['length_acc']))
+
+            if t % args.eval_every == 0:
                 val_acc, val_loss = evaluate(model, val_loader, args, loss_fnc)
                 trn_acc_arr[t // args.eval_every] = float(tot_corr) / denominator
-                val_acc_arr[t // args.eval_every] = val_acc
+                # val_acc_arr[t // args.eval_every] = val_acc
+                if args.model == "ffnn" or args.model == "rnn":
+                    print("Epoch: {:>3d}, Step: {:>7d} | Trn acc: {:.6f} | Trn loss (*1e6): {:.6f} | Val acc: {:.6f} | Val loss (*1e6): {:.6f}"
+                            .format(epoch + 1,
+                                    t + 1,
+                                    trn_acc_arr[t // args.eval_every],
+                                    accum_loss / denominator * 1e6,
+                                    val_acc,
+                                    val_loss * 1e6))
+                    if val_acc > best_val_acc:
+                        torch.save(model, "./model_dir/model_best_val_acc.pt")
+                        best_val_acc = val_acc
+                elif args.model == "cnn3d":
+                    print("Epoch: {:>4d}, Step: {:>7d} || TRN , VAL || loss (*1e6): {:.6f} , {:.6f} | note acc: {:.6f} , {:.6f} | avg corr notes: {:.6f} , {:.6f} | rest acc: {:.6f} , {:.6f} | length acc: {:.6f} , {:.6f}"
+                            .format(epoch,
+                                    t,
+                                    accum_loss / denominator * 1e6,     val_loss * 1e6,
+                                    acc['note_acc'],                    val_acc['note_acc'],
+                                    acc['avg_num_corr_notes'],          val_acc['avg_num_corr_notes'],
+                                    acc['rest_acc'],                    val_acc['rest_acc'],
+                                    acc['length_acc'],                  val_acc['length_acc']
 
-                print(
-                    "Epoch: {:>3d}, Step: {:>7d} | Trn acc: {:.6f} | Trn loss (*1e6): {:.6f} | Val acc: {:.6f} | Val loss (*1e6): {:.6f}"
-                        .format(epoch + 1,
-                                  t + 1,
-                                  trn_acc_arr[t // args.eval_every],
-                                  accum_loss / denominator * 1e6,
-                                  val_acc,
-                                  val_loss * 1e6))
-                if val_acc > best_val_acc:
-                    torch.save(model, "./model_dir/model_best_val_acc.pt")
-                    best_val_acc = val_acc
+
+
+
+
+                    ))
+                    if val_acc['avg_num_corr_notes'] > best_val_acc:
+                        torch.save(model, "./model_dir/model_best_val_acc.pt")
+                        best_val_acc = val_acc['avg_num_corr_notes']
+
+
 
                 accum_loss = 0
                 # mov_avg_corr = 0
@@ -297,7 +258,76 @@ def main(args):
     # print("tst\t\t{:>.3f}\t{:>.6f}".format(tst_acc_best, tst_loss_best))
 
 
-######
+def get_evaluation_stats(tensor, actual, predictions, loss_fnc, args):
+
+    if args.model == "rnn" or args.model == "ffnn":
+        predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
+    elif args.model == "cnn3d":
+        pred_notes, pred_rests, pred_lengths = predictions
+        pred_notes = pred_notes[:-1, :, :]
+        pred_rests = pred_rests[:-1]
+        pred_lengths = pred_lengths[:-1]
+        predictions = torch.cat(
+            (pred_notes.view((pred_notes.shape[0], -1)), pred_rests.unsqueeze(1), pred_lengths.unsqueeze(1)), dim=1)
+        # /TODO comment
+
+    if args.model == "ffnn":
+        # remove first `memory` predictions, because the fnn doesn't predict the first `memory` notes
+        label = actual[:, args.memory:, :]
+    elif args.model == "rnn":
+        # remove first prediction, because the rnn doesn't predict the first note
+        label = tensor[:, 1:, :]
+    elif args.model == "cnn3d":
+        label_notes, label_rests, label_lengths = tensor
+        label_notes = label_notes.squeeze()
+        label_rests = label_rests.squeeze()
+        label_lengths = label_lengths.squeeze()
+
+        memory = label_notes.shape[0] - pred_notes.shape[0]  # /
+        label_notes = label_notes[memory:, :, :]
+        label_rests = label_rests[memory:]
+        label_lengths = label_lengths[memory:]
+        label = torch.cat(
+            (label_notes.view((pred_notes.shape[0], -1)), label_rests.unsqueeze(1), label_lengths.unsqueeze(1)), dim=1)
+        # /TODO comment
+
+    batch_loss = loss_fnc(input=predictions, target=label.float())
+
+
+    if args.model == "ffnn" or args.model == "rnn":
+        corr = (binarize_pred_2d(np.array(predictions.detach())[0]) == label)[0]
+        corr = np.all(np.array(corr), axis=1)
+        acc = float(corr.sum()) / len(corr)
+        num_notes = corr.shape[0]  # corr.shape[0] is # notes, so this will calculate the loss per note
+    elif args.model == "cnn3d":
+        pred_notes = np.array(pred_notes.detach())
+        pred_rests = np.array(pred_rests.detach())
+        pred_lengths = np.array(pred_lengths.detach())
+        pred_notes, pred_rests, pred_lengths = binarize_pred_3d(pred_notes, pred_rests, pred_lengths, args.n_notes)
+
+        label_notes = np.array(label_notes)
+        corr_notes = (pred_notes == label_notes)
+
+        num_corr_notes = np.logical_and(corr_notes, pred_notes)
+        num_corr_notes = num_corr_notes.reshape((num_corr_notes.shape[0], -1))
+        num_corr_notes = np.sum(num_corr_notes, axis=1)
+
+        corr_rests = (pred_rests == label_rests)
+        corr_lengths = (pred_lengths == label_lengths)
+
+        corr_notes = corr_notes.reshape((corr_notes.shape[0], -1))
+        corr_notes = np.all(np.array(corr_notes), axis=1)
+
+
+        acc = {
+            'note_acc': corr_notes.mean(),
+            'avg_num_corr_notes': num_corr_notes.mean(),
+            'rest_acc': float(corr_rests.sum())/len(corr_rests),
+            'length_acc': float(corr_rests.sum())/len(corr_rests)
+        }
+        num_notes = corr_notes.shape[0]  # corr.shape[0] is # notes
+
+    return num_notes, batch_loss, acc
 
 
 def binarize_pred_2d(pred): #/hardcoded rn
@@ -353,35 +383,40 @@ def load_model(args):
     return model, loss_fn, optimizer
 
 def evaluate(model, loader, args, loss_fnc):
-    tot_corr = 0
+    if args.model == "rnn" or args.model == "ffnn":
+        tot_acc = 0
+    elif args.model == "cnn3d":
+        tot_acc = {
+                'note_acc': 0,
+                'avg_num_corr_notes': 0,
+                'rest_acc': 0,
+                'length_acc': 0
+            }
     tot_loss = 0
+    tot_batches = 0
+    tot_notes = 0
     for i, batch in enumerate(loader):
         tensor = batch['data']
         actual = batch['label']
         predictions = model(tensor)
 
-        if args.model == "rnn":
-            predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
-        elif args.model == "ffnn":
-            predictions = predictions[:, :-1, :]  # remove last prediction, because we don't know the "next note"
+        num_notes, batch_loss, acc = get_evaluation_stats(tensor, actual, predictions, loss_fnc, args)
+        if args.model == "rnn" or args.model == "ffnn":
+            tot_acc += acc
+        elif args.model == "cnn3d":
+            tot_acc = {key: v1 + v2
+                       for key, v1, v2 in zip(tot_acc.keys(), tot_acc.values(), acc.values())}
+        tot_loss += batch_loss
+        tot_batches += 1
+        tot_notes += num_notes
 
-        if args.model == "ffnn":
-            label = actual[:, args.memory:,
-                    :]  # remove first `memory` predictions, because the fnn doesn't predict the first `memory` notes
-        elif args.model == "rnn":
-            label = tensor[:, 1:, :]  # remove first prediction, because the rnn doesn't predict the first note
+    if args.model == "rnn" or args.model == "ffnn":
+        acc_per_note = tot_acc / tot_batches
+    elif args.model == "cnn3d":
+        acc_per_note = {key: v / tot_batches
+                        for key, v in zip(tot_acc.keys(), tot_acc.values())}
 
-        corr = (binarize_pred_2d(np.array(predictions.detach())[0]) == label)[0]
-        corr = np.all(np.array(corr), axis=1)
-        tot_corr += int(corr.sum())
-
-        loss = loss_fnc(input=predictions, target=label.float())
-        tot_loss += loss
-    if args.concat:
-        acc_per_note = float(tot_corr) / label.shape[1]
-        loss_per_note = tot_loss / label.shape[1]
-    else:
-        raise Exception("Not concatenating is not yet supported.")
+    loss_per_note = tot_loss / num_notes
     return acc_per_note, loss_per_note
 
 
