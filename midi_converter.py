@@ -410,7 +410,7 @@ def notechordlist_to_all_notelist(notechordlist):
             for note in element:  # obtain the notes in chord element
                 note.offset = note.offset+offset  # obtain new offset
                 notechordlist.append(note)  # adds new notes to end of stream (i think end, doesn't specify)
-            notechordlist.pop[i]  # remove chord
+            notechordlist.pop(i)  # remove chord
             i = i-1
             length = length-1
         i = i+1
@@ -427,7 +427,7 @@ def notechordlist_to_all_notelist(notechordlist):
 def notelist_to_tensors_with_3d_all_notes(sorted_notelist):
     music_length = len(sorted_notelist)
 
-    notes_tensor_3d = np.zeros((1, len(MIDI_PITCHES), len(MIDI_OCTAVES)))
+    notes_tensor_3d = np.zeros((len(sorted_notelist), len(MIDI_PITCHES), len(MIDI_OCTAVES)))
     lengths_tensor = []
     rests_tensor = np.ones((music_length,))
     prev_offset = 0  # stores the offset of the previous note, start at 0
@@ -438,17 +438,18 @@ def notelist_to_tensors_with_3d_all_notes(sorted_notelist):
     for i, note in enumerate(sorted_notelist):
         if note.offset > prev_offset:  # if new time step
             difference = note.offset-prev_offset
-            lengths_tensor.append = difference  # cut off length of prev timestep
+            lengths_tensor.append(difference)  # cut off length of prev timestep
             # add new time slice
             np.append(notes_tensor_3d, np.zeros((1, len(MIDI_PITCHES), len(MIDI_OCTAVES))), axis=0)
             j = j + 1  # move time index
             prev_offset = note.offset  # start new time step
 
             # check for values w durations <= 0, remove said values from list
-            for k in range(notes_in_slice-1, -1, -1):
-                notes_in_slice.duration.quarterLength = notes_in_slice.duration.quarterLength-difference
-                if notes_in_slice.duration.quarterLength <= 0:
-                    notes_in_slice.pop(k)  # chuck notes that don't have enough duration
+            for k in range(len(notes_in_slice)-1, -1, -1):
+                note_in_slice = notes_in_slice[k]
+                note_in_slice.duration.quarterLength = note_in_slice.duration.quarterLength-difference
+                if note_in_slice.duration.quarterLength <= 0:
+                        notes_in_slice.pop(k)  # chuck notes that don't have enough duration
                 else:
                     # repeat notes that still have duration
                     note = notes_in_slice[k]

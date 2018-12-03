@@ -9,7 +9,7 @@ from torchtext import data
 import argparse
 import os
 import random
-from midi_converter import file_to_tensor, MIDI_PITCHES, MIDI_OCTAVES
+from midi_converter import file_to_tensor_flatten, MIDI_PITCHES, MIDI_OCTAVES
 import pickle
 
 from dataset import MusicDataset
@@ -73,7 +73,7 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
         for path in pathlist:
             if VERBOSE:
                 print("Processing {} ...".format(path))
-            t = file_to_tensor(path, first_voice_only=first_voice_only, three_d_tensor=three_d_tensor)
+            t = file_to_tensor_flatten(path, first_voice_only=first_voice_only, three_d_tensor=three_d_tensor)
             cat_tensor = np.concatenate((cat_tensor, t), axis=0)
 
         cat_tensor_2 = add_shifted_copies(cat_tensor, num_copies)
@@ -94,7 +94,7 @@ def files_to_dataloader(pathlist, concat=True, num_copies=1, first_voice_only=Fa
         for path in pathlist:
             if VERBOSE:
                 print("Processing {} ...".format(path))
-            notes_tensor, rests_tensor, lengths_tensor = file_to_tensor(path, first_voice_only=first_voice_only, three_d_tensor=three_d_tensor)
+            notes_tensor, rests_tensor, lengths_tensor = file_to_tensor_flatten(path, first_voice_only=first_voice_only, three_d_tensor=three_d_tensor)
 
             cat_tensor = np.concatenate((cat_tensor, notes_tensor), axis=0)
             cat_rest_tensor = np.concatenate((cat_rest_tensor, rests_tensor))
@@ -137,7 +137,7 @@ def splits(paths_tuple, args):
     loader_tuple = ()
     for paths in paths_tuple:
         loader_tuple += (files_to_dataloader(paths, concat=args.concat, num_copies=args.memory,
-                                            first_voice_only=args.first_voice_only, three_d_tensor=(args.model == 'cnn3d')),)
+                                             first_voice_only=args.first_voice_only, three_d_tensor=(args.model == 'cnn3d')),)
     return loader_tuple
 
 
@@ -150,7 +150,7 @@ def main(args):
     if args.concat:
         has_saved_dataloaders = os.path.isfile("./output/loaders.pkl")
         if args.overwrite_cached_loaders or not has_saved_dataloaders:
-            trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.85, 0.15, 0)
+            trn_paths, val_paths, tst_paths = trn_val_tst_split(PATHS, 0.9, 0.1, 0)
             trn_loader, val_loader, tst_loader = splits((trn_paths, val_paths, tst_paths), args)
 
             with open("./output/loaders.pkl", 'wb') as f:
@@ -165,10 +165,10 @@ def main(args):
     print("Hyperparameters:\n{}".format(args))
 
     model, loss_fnc, optimizer = load_model(args)
-    n_trn_examples = 12
-    n_steps_per_epoch = int(np.ceil(n_trn_examples / args.batch_size))
+    n_steps_per_epoch = args.divide_data_pieces
     n_entries = int(np.ceil(args.epochs * n_steps_per_epoch / args.eval_every))
     trn_acc_arr = np.zeros(n_entries)
+    # val_acc_arr = np.zeros(n_entries)
     best_val_acc = -1
 
     t = 0  # used to count batch number putting through the model
@@ -347,6 +347,7 @@ def binarize_pred_3d(pred_notes, pred_rests, pred_lengths, n_notes):
         new_pred_notes = np.logical_or(new_pred_notes, pred_notes == note_values[:, i:(i+1), np.newaxis])
 
     pred_notes = new_pred_notes
+    pred_lengths = (pred_lengths - np.mean(pred_lengths))/2 + np.mean(pred_lengths)
     pred_lengths = np.exp2(np.round(np.log2(pred_lengths)))
 
     return pred_notes, pred_rests, pred_lengths
@@ -416,7 +417,6 @@ def evaluate(model, loader, args, loss_fnc):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--batch_size', type=int, default=4)
     parser.add_argument('--lr', type=float, default=0.001)
     parser.add_argument('--epochs', type=int, default=4000)
     parser.add_argument('--model', type=str, default="cnn3d")
